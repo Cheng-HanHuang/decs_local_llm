@@ -1,0 +1,406 @@
+#!/usr/bin/env python3
+"""Per-user, localhost-only vLLM/Open WebUI launcher for PAC and slim.
+
+No external Python dependencies are required by this launcher.
+"""
+from __future__ import annotations
+
+import argparse
+import contextlib
+import fcntl
+import json
+import os
+from pathlib import Path
+import secrets
+import signal
+import socket
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+PROFILES = {
+    "coder": {
+        "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        "served": "local-qwen-coder",
+        "port": 8000,
+        "memory": 0.72,
+        "seqs": 2,
+        "gpus": 1,
+        "parser": "qwen3_xml",
+    },
+    "reasoner": {
+        "model": "Qwen/Qwen3-Next-80B-A3B-Thinking",
+        "served": "local-qwen-next-thinking",
+        "port": 8001,
+        "memory": 0.88,
+        "seqs": 1,
+        "gpus": 2,
+        "parser": None,
+    },
+}
+SERVICES = ("coder", "reasoner", "web")
+
+
+def root_path():
+    specified = os.environ.get("PAC_LLM_ROOT")
+    if specified:
+        return Path(specified).expanduser().resolve()
+    for server in ("research-pac", "research-slim"):
+        candidate = Path(f"/egr/{server}/{os.environ.get('USER', '')}")
+        if candidate.is_dir():
+            return candidate
+    raise RuntimeError("Set PAC_LLM_ROOT=/egr/research-pac/$USER (or slim).")
+
+
+class Workspace:
+    def __init__(self):
+        self.root = root_path()
+        self.base = Path(os.environ.get("PAC_LLM_BASE", str(self.root / "local_llm"))).expanduser().resolve()
+        self.vllm_env = Path(os.environ.get("PAC_LLM_VLLM_ENV", str(self.root / "conda-envs/local-agent")))
+        self.web_env = Path(os.environ.get("PAC_LLM_WEBUI_ENV", str(self.root / "conda-envs/open-webui")))
+        self.host = socket.gethostname().split(".")[0]
+        self.run_dir = self.base / "run" / self.host
+        self.log_dir = self.base / "logs" / self.host
+        self.envfile = self.base / "env_local_agent.sh"
+
+    def prepare(self):
+        for path in (self.run_dir, self.log_dir):
+            path.mkdir(parents=True, exist_ok=True)
+            path.chmod(0o700)
+
+    def state_file(self, name):
+        return self.run_dir / (name + ".json")
+
+    def port(self, name):
+        default = 8080 if name == "web" else PROFILES[name]["port"]
+        return int(os.environ.get(f"PAC_LLM_{name.upper()}_PORT", default))
+
+
+def fail(message):
+    raise RuntimeError(message)
+
+
+def proc_identity(pid):
+    """Linux /proc start time distinguishes an old process from PID reuse."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        fields = stat[stat.rfind(")") + 2 :].split()
+        if fields[0] == "Z":
+            return None
+        return fields[19]  # field 22 (starttime), with fields 1-2 omitted
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def record(workspace, name):
+    try:
+        return json.loads(workspace.state_file(name).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def owns_process(rec):
+    if not rec:
+        return False
+    try:
+        pid = int(rec["pid"])
+        return (proc_identity(pid) == rec["starttime"] and
+                os.getpgid(pid) == pid and
+                rec.get("owner") == os.getuid())
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def port_open(port):
+    with socket.socket() as sock:
+        sock.settimeout(0.4)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def api_ok(port):
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1.5) as r:
+            return r.status == 200
+    except (OSError, ValueError, urllib.error.URLError):
+        return False
+
+
+def source_environment(w):
+    env = os.environ.copy()
+    if w.envfile.exists():
+        # The original setup script defines project-local caches and paths.
+        p = subprocess.run(
+            ["bash", "-c", 'source "$1" && env -0', "bash", str(w.envfile)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, check=False,
+        )
+        if p.returncode:
+            fail(f"Cannot source {w.envfile}: {p.stderr.decode(errors='replace')[-400:]}")
+        env.update(dict(part.decode(errors="surrogateescape").split("=", 1)
+                        for part in p.stdout.split(b"\0") if b"=" in part))
+    else:
+        # Fresh lab member: work without the June-specific environment script.
+        cache = w.base / "cache"
+        env.update({
+            "XDG_CACHE_HOME": str(cache),
+            "HF_HOME": str(w.base / "hf_cache"),
+            "VLLM_CACHE_ROOT": str(w.base / "vllm_cache"),
+            "TRITON_CACHE_DIR": str(w.base / "triton_cache"),
+            "FLASHINFER_WORKSPACE_BASE": str(w.base / "flashinfer_workspace_base"),
+            "TMPDIR": str(w.base / "tmp"),
+        })
+        for key in ("XDG_CACHE_HOME", "HF_HOME", "VLLM_CACHE_ROOT", "TRITON_CACHE_DIR", "FLASHINFER_WORKSPACE_BASE", "TMPDIR"):
+            Path(env[key]).mkdir(parents=True, exist_ok=True)
+    env["PATH"] = f"{w.vllm_env}/bin:{w.base}/bin:" + env.get("PATH", "")
+    env["PYTHONNOUSERSITE"] = "1"
+    return env
+
+
+def gpu_stats():
+    p = subprocess.run(["nvidia-smi", "--query-gpu=index,memory.total,memory.free,utilization.gpu",
+                        "--format=csv,noheader,nounits"], capture_output=True, text=True, check=False)
+    if p.returncode:
+        fail("nvidia-smi failed: " + p.stderr.strip()[-300:])
+    result = {}
+    for line in p.stdout.splitlines():
+        row = [x.strip() for x in line.split(",")]
+        if len(row) == 4:
+            try:
+                result[int(row[0])] = (int(row[1]), int(row[2]), int(row[3]))
+            except ValueError:
+                continue
+    if not result:
+        fail("No readable NVIDIA GPU data")
+    return result
+
+
+def gpu_choice(name, args, profile):
+    n = profile["gpus"]
+    text = args.gpus or os.environ.get("PAC_LLM_GPUS")
+    if not text and n == 1:
+        text = args.gpu or os.environ.get("PAC_LLM_GPU")
+    if not text:
+        fail("Specify --gpu 0 (coder), --gpus 0,1 (reasoner), or PAC_LLM_GPU/PAC_LLM_GPUS")
+    try:
+        indices = [int(x.strip()) for x in text.split(",")]
+    except ValueError:
+        fail("GPU selection must be numeric, e.g. 0 or 0,1")
+    if len(indices) != n or len(set(indices)) != n:
+        fail(f"{name} needs exactly {n} distinct GPU(s)")
+    stats = gpu_stats()
+    budget = args.memory_util if args.memory_util is not None else profile["memory"]
+    if not 0 < budget < 1:
+        fail("--memory-util must be between 0 and 1")
+    for index in indices:
+        if index not in stats:
+            fail(f"GPU {index} not present: {sorted(stats)}")
+        total, free, util = stats[index]
+        need = total * budget + 2048
+        print(f"GPU {index}: free {free/1024:.1f} GiB, utilization {util}%, "
+              f"vLLM target {total*budget/1024:.1f} GiB + 2 GiB reserve")
+        if util >= 90:
+            print(f"WARNING: GPU {index} is heavily utilized by existing workloads")
+        if free < need and not args.force:
+            fail(f"GPU {index} lacks conservative headroom; choose other GPU(s) or use --force knowingly")
+    return indices, budget
+
+
+@contextlib.contextmanager
+def locked(w):
+    w.prepare()
+    with (w.run_dir / ".lock").open("a+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        yield
+
+
+def spawn(w, name, cmd, env, metadata):
+    logfile = w.log_dir / f"{name}.log"
+    with logfile.open("ab") as log:
+        log.write(f"\n--- START {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n".encode())
+        log.flush()
+        p = subprocess.Popen(cmd, cwd=str(w.base), env=env, stdin=subprocess.DEVNULL,
+                             stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    birth = None
+    for _ in range(25):
+        birth = proc_identity(p.pid)
+        if birth is not None or p.poll() is not None:
+            break
+        time.sleep(0.04)
+    if birth is None:
+        fail(f"{name} exited immediately; inspect {logfile}")
+    state = {"pid": p.pid, "starttime": birth, "owner": os.getuid(),
+             "host": w.host, "port": w.port(name), "log": str(logfile), **metadata}
+    tmp = w.state_file(name).with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=2) + "\n")
+    os.replace(tmp, w.state_file(name))
+    print(f"Started {name}: PID {p.pid} on {w.host}, log {logfile}")
+    print("Initialization may take time; check: pac-llm status; pac-llm logs " + name)
+
+
+def cmd_start(w, args):
+    name = args.service
+    with locked(w):
+        if owns_process(record(w, name)):
+            fail(f"{name} already managed and running; use pac-llm status")
+        port = w.port(name)
+        if port_open(port):
+            fail(f"Port {port} is already occupied (possibly an unmanaged instance). No action taken")
+        env = source_environment(w)
+        if name == "web":
+            executable = w.web_env / "bin/open-webui"
+            if not executable.is_file():
+                fail(f"Open WebUI not installed at {executable}")
+            private = w.base / "webui"
+            private.mkdir(parents=True, exist_ok=True)
+            private.chmod(0o700)
+            data = private / "data"
+            data.mkdir(exist_ok=True)
+            data.chmod(0o700)
+            key = private / ".secret_key"
+            if not key.exists():
+                fd = os.open(key, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                with os.fdopen(fd, "w") as f:
+                    f.write(secrets.token_hex(32) + "\n")
+            env.update({"DATA_DIR": str(data), "WEBUI_SECRET_KEY": key.read_text().strip(),
+                        "WEBUI_AUTH": "true", "ENABLE_OLLAMA_API": "false",
+                        "ENABLE_OPENAI_API": "true", "OPENAI_API_BASE_URL":
+                        f"http://127.0.0.1:{w.port('coder')}/v1", "OPENAI_API_KEY": "dummy",
+                        "CUDA_VISIBLE_DEVICES": "", "HF_HUB_DISABLE_IMPLICIT_TOKEN": "1"})
+            for k in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
+                env.pop(k, None)
+            cmd = [str(executable), "serve", "--host", "127.0.0.1", "--port", str(port)]
+            spawn(w, name, cmd, env, {"model": None})
+            return
+        profile = PROFILES[name]
+        indices, budget = gpu_choice(name, args, profile)
+        executable = w.vllm_env / "bin/vllm"
+        if not executable.is_file():
+            fail(f"vLLM executable missing: {executable}")
+        if not (w.vllm_env / "bin/ninja").is_file():
+            fail(f"Ninja missing: {w.vllm_env}/bin/ninja (install into local-agent)")
+        model = args.model or os.environ.get("PAC_LLM_MODEL") or profile["model"]
+        served = args.served_name or (profile["served"] if model == profile["model"] else model.split("/")[-1])
+        parser = args.tool_parser if args.tool_parser is not None else (profile["parser"] if model == profile["model"] else None)
+        env["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, indices))
+        env["HF_HUB_OFFLINE"] = os.environ.get("PAC_LLM_OFFLINE", "1")
+        env["PYTHONUNBUFFERED"] = "1"
+        cmd = [str(executable), "serve", model, "--host", "127.0.0.1", "--port", str(port),
+               "--served-model-name", served, "--dtype", "bfloat16",
+               "--tensor-parallel-size", str(len(indices)),
+               "--max-model-len", str(args.max_model_len or 16384),
+               "--gpu-memory-utilization", str(budget),
+               "--max-num-seqs", str(profile["seqs"])]
+        if parser:
+            cmd += ["--enable-auto-tool-choice", "--tool-call-parser", parser]
+        spawn(w, name, cmd, env, {"gpus": indices, "model": model, "served_name": served})
+
+
+def cmd_status(w, _args):
+    print(f"Host: {w.host}    Base: {w.base}")
+    for name in SERVICES:
+        rec = record(w, name)
+        alive = owns_process(rec)
+        port = w.port(name)
+        state = ("running" if alive else "unmanaged port" if port_open(port)
+                 else "stale record" if rec else "stopped")
+        api = "ready" if port_open(port) and api_ok(port) else "not ready"
+        pid = rec["pid"] if alive else "-"
+        print(f"{name:8} {state:14} pid={pid} port={port} api={api}")
+        if alive and rec.get("gpus") is not None:
+            print(f"         GPUs={rec['gpus']} model={rec.get('served_name')}")
+
+
+def cmd_stop(w, args):
+    with locked(w):
+        rec = record(w, args.service)
+        if not owns_process(rec):
+            fail(f"No verified managed {args.service} process. Refusing to kill unrelated processes")
+        pid = int(rec["pid"])
+        os.killpg(pid, signal.SIGTERM)
+        for _ in range(40):
+            if proc_identity(pid) != rec["starttime"]:
+                break
+            time.sleep(0.1)
+        if proc_identity(pid) == rec["starttime"]:
+            if not args.force:
+                print("Still shutting down; recheck status. Use stop --force only if needed")
+                return
+            if owns_process(rec):
+                os.killpg(pid, signal.SIGKILL)
+        if not owns_process(rec):
+            w.state_file(args.service).unlink(missing_ok=True)
+        print(f"Stop signal sent to owned {args.service} process group {pid}")
+
+
+def cmd_logs(w, args):
+    f = w.log_dir / (args.service + ".log")
+    if not f.is_file():
+        fail(f"Log not found: {f}")
+    with f.open("rb") as stream:
+        # Read only last 256 KB to keep logs inexpensive on NFS.
+        stream.seek(0, 2)
+        stream.seek(max(0, stream.tell() - 262144))
+        lines = stream.read().decode(errors="replace").splitlines()
+    print("\n".join(lines[-args.lines:]))
+
+
+def cmd_doctor(w, _args):
+    print(f"Host: {w.host}\nROOT: {w.root}\nBASE: {w.base}")
+    print(f"vLLM: {w.vllm_env / 'bin/vllm'} exists={(w.vllm_env / 'bin/vllm').is_file()}")
+    print(f"Ninja: {w.vllm_env / 'bin/ninja'} exists={(w.vllm_env / 'bin/ninja').is_file()}")
+    print(f"WebUI: {w.web_env / 'bin/open-webui'} exists={(w.web_env / 'bin/open-webui').is_file()}")
+    print(f"June environment script: {w.envfile.exists()}")
+    try:
+        for idx, (total, free, busy) in gpu_stats().items():
+            print(f"GPU {idx}: {free/1024:.1f}/{total/1024:.1f} GiB free, {busy}% utilized")
+    except RuntimeError as exc:
+        print(f"GPU check: {exc}")
+    cmd_status(w, _args)
+
+
+def cmd_aider(w, args):
+    wrapper = w.base / "run_aider_local.sh"
+    if not wrapper.is_file():
+        fail(f"Existing Aider wrapper missing: {wrapper}")
+    env = source_environment(w)
+    print("Using Aider (ask-only default), connected to coder port", w.port("coder"))
+    os.execvpe(str(wrapper), [str(wrapper), *args.aider_args], env)
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description="Manage personal local LLM services on PAC/slim")
+    sub = p.add_subparsers(dest="action", required=True)
+    start = sub.add_parser("start", help="Launch a managed local service")
+    start.add_argument("service", choices=SERVICES)
+    start.add_argument("--gpu", help="Physical GPU index for one-GPU profile")
+    start.add_argument("--gpus", help="Comma-separated physical GPU indices")
+    start.add_argument("--model", help="Override Hugging Face model ID")
+    start.add_argument("--served-name", help="Override API model ID")
+    start.add_argument("--tool-parser", help="Tool parser for compatible model")
+    start.add_argument("--memory-util", type=float, help="vLLM GPU memory fraction")
+    start.add_argument("--max-model-len", type=int)
+    start.add_argument("--force", action="store_true", help="Bypass conservative free-memory check; not port checks")
+    sub.add_parser("status", help="Inspect services on this host")
+    stop = sub.add_parser("stop", help="Stop only a verified managed process group")
+    stop.add_argument("service", choices=SERVICES)
+    stop.add_argument("--force", action="store_true", help="SIGKILL only verified owned group if SIGTERM failed")
+    logs = sub.add_parser("logs", help="Show a short log tail")
+    logs.add_argument("service", choices=SERVICES)
+    logs.add_argument("--lines", type=int, default=25)
+    sub.add_parser("doctor", help="Check existing paths, GPUs, and endpoints")
+    aider = sub.add_parser("aider", help="Launch June's Aider wrapper in the current repo")
+    aider.add_argument("aider_args", nargs=argparse.REMAINDER)
+    args = p.parse_args(argv)
+    try:
+        w = Workspace()
+        {"start": cmd_start, "status": cmd_status, "stop": cmd_stop,
+         "logs": cmd_logs, "doctor": cmd_doctor, "aider": cmd_aider}[args.action](w, args)
+    except (RuntimeError, OSError, ValueError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

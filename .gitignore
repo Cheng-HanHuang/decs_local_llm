@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+.env.*
+.secrets/
+logs/
+run/
+webui/
+models/
+hf_cache/
