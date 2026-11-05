@@ -50,10 +50,10 @@ class SetupConfigTests(unittest.TestCase):
     def test_existing_uv_aider_skips_unneeded_conda_env(self):
         aider = self.root / "local_llm/bin/aider"
         aider.parent.mkdir(parents=True, exist_ok=True)
-        aider.write_text("#!/bin/sh\\nexit 0\\n")
+        aider.write_text("#!/bin/sh\nexit 0\n")
         aider.chmod(0o755)
         wrapper = self.root / "local_llm/run_aider_local.sh"
-        wrapper.write_text("#!/bin/sh\\nexit 0\\n")
+        wrapper.write_text("#!/bin/sh\nexit 0\n")
         r = self.cmd("setup", "--components", "aider")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("No missing executables detected", r.stdout)
@@ -64,10 +64,10 @@ class SetupConfigTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         aider = self.root / "local_llm/bin/aider"
         aider.parent.mkdir(parents=True, exist_ok=True)
-        aider.write_text('#!/bin/sh\\nprintf "BASE=%s\\\\nHOME=%s\\\\nARGS=%s\\\\n" "$OPENAI_API_BASE" "$HOME" "$*"\\n')
+        aider.write_text('#!/bin/sh\nprintf "BASE=%s\\nHOME=%s\\nARGS=%s\\n" "$OPENAI_API_BASE" "$HOME" "$*"\n')
         aider.chmod(0o755)
         wrapper = self.root / "local_llm/run_aider_local.sh"
-        wrapper.write_text("#!/bin/sh\\nexit 31\\n")
+        wrapper.write_text("#!/bin/sh\nexit 31\n")
         r = self.cmd("aider")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("BASE=http://127.0.0.1:18100/v1", r.stdout)
