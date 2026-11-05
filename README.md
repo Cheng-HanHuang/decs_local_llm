@@ -56,7 +56,7 @@ pac-llm doctor                      # paths + live GPU free VRAM
 pac-llm start web                   # CPU-only, localhost:8080
 pac-llm start coder --gpu 0         # Qwen3 Coder on GPU 0, localhost:8000
 pac-llm logs coder --lines 30       # short log tail, safe with huge logs
-pac-llm aider                       # ask-mode Aider, honors per-user coder port
+pac-llm aider                       # ask-only Aider, honors saved coder port; does not edit .gitignore
 pac-llm stop coder                  # only our managed process group
 pac-llm stop web
 ```
@@ -110,7 +110,7 @@ The default coder is `Qwen/Qwen3-Coder-30B-A3B-Instruct`, BF16, 16k context, 0.7
 - The launcher refuses to claim an occupied API port, even if the process was started manually. It does not kill unmanaged processes.
 - Run metadata is per host and per user; before signaling a process group, it validates PID, Linux process starttime, owner, and process-group leader. `stop --force` is for a **verified managed** group only.
 - All logs and WebUI credentials stay under the research root, never in Git. WebUI accounts and chats persist under `$PAC_LLM_BASE/webui/data`. The launcher reuses the existing secret key and data directory.
-- `pac-llm aider` launches the installed uv or Conda Aider executable directly in ask mode and honors the configured coder port. Legacy standalone `run_aider_local.sh` remains unchanged for manual use.
+- `pac-llm aider` launches uv or Conda Aider in ask-only mode, honors the configured coder port, disables Aider's automatic `.gitignore` update, and preserves a real global `~/.gitconfig` if present. The old `run_aider_local.sh` remains unchanged for manual use. For exact code explanations, enter `/read-only bin/pac-llm bin/pac_llm_bootstrap.py` in Aider; a repository map alone supplies only summaries.
 - If you started vLLM/Open WebUI manually before adopting this launcher, shut them down by their **original terminal or known PID**. The launcher will report the port as unmanaged and refuse to kill it.
 - Open WebUI's RAG/embedding setup is independent of chat inference; an expired Hugging Face token may break document retrieval without preventing chat. The launcher disables implicit Hugging Face tokens only in the WebUI process.
 - Enabling auto-tool-choice lets models request tools. Review Open WebUI workspace tools/skills permissions and verify claimed actions; a model saying “I created a skill” is not evidence it actually did.
