@@ -2,7 +2,21 @@
 
 A small, **per-user, localhost-only** launcher for existing vLLM, Open WebUI, and Aider installations on MSU lab servers. No model weights, authentication tokens, or shared live environments are stored in this repo.
 
-This tool is a convenience wrapper, **not an installer**. `doctor` checks whether the separate dependencies are installed. It has been designed around the recovered June 2026 setup and tested with CPU-only fake servers; a live PAC test is still needed.
+This is a per-user service manager with an **explicit, opt-in setup command**. Existing vLLM/Open WebUI service operation has been validated on PAC; the new installation path still needs a first-time lab-member test.
+
+## New: per-user onboarding
+
+See [SETUP.md](SETUP.md) for detailed lab instructions.
+
+```bash
+pac-llm config init --gpu 1 --coder-port 18100 --reasoner-port 18101 --web-port 18180
+pac-llm config show
+pac-llm setup                              # PREVIEW only
+pac-llm setup --components vllm,web,aider --yes
+pac-llm setup --components vllm --download-coder --yes   # optional, large weights
+```
+
+Installation and model downloads never happen implicitly through `start` or `doctor`. Each user's passwords, environments, chats and model cache live under their own research root.
 
 ## Quick start (on PAC)
 
@@ -111,7 +125,7 @@ Tests use fake `nvidia-smi` and fake HTTP serving scripts, so they never load a 
 
 ## Known limits
 
-- This intentionally does not install vLLM, Open WebUI, or model weights; follow the lab-specific setup guide first.
+- Explicit `setup --yes` installs missing executables but does not update existing environments or fully lock dependencies. Model downloads must be requested separately.
 - On a fresh installation without `env_local_agent.sh`, it sets a minimal subset of cache locations; review other XDG/HF caches before downloading models.
 - If two profiles are started, Open WebUI's current single backend points at coder. Add reasoning API at `http://127.0.0.1:8001/v1` in **Admin → Settings → Connections** as needed.
 - Process-state management is Linux-specific (`/proc`), and service metadata is per machine. Shared NFS storage does not mean a localhost service is reachable on another host.
