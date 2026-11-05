@@ -2,7 +2,21 @@
 
 A small, **per-user, localhost-only** launcher for existing vLLM, Open WebUI, and Aider installations on MSU lab servers. No model weights, authentication tokens, or shared live environments are stored in this repo.
 
-This tool is a convenience wrapper, **not an installer**. `doctor` checks whether the separate dependencies are installed. It has been designed around the recovered June 2026 setup and tested with CPU-only fake servers; a live PAC test is still needed.
+This is a per-user service manager with an **explicit, opt-in setup command**. Existing vLLM/Open WebUI service operation has been validated on PAC; the new installation path still needs a first-time lab-member test.
+
+## New: per-user onboarding
+
+See [SETUP.md](SETUP.md) for detailed lab instructions.
+
+```bash
+pac-llm config init --gpu 1 --coder-port 18100 --reasoner-port 18101 --web-port 18180
+pac-llm config show
+pac-llm setup                              # PREVIEW only
+pac-llm setup --components vllm,web,aider --yes
+pac-llm setup --components vllm --download-coder --yes   # optional, large weights
+```
+
+Installation and model downloads never happen implicitly through `start` or `doctor`. Each user's passwords, environments, chats and model cache live under their own research root.
 
 ## Quick start (on PAC)
 
@@ -42,7 +56,7 @@ pac-llm doctor                      # paths + live GPU free VRAM
 pac-llm start web                   # CPU-only, localhost:8080
 pac-llm start coder --gpu 0         # Qwen3 Coder on GPU 0, localhost:8000
 pac-llm logs coder --lines 30       # short log tail, safe with huge logs
-pac-llm aider                       # original ask-mode Aider wrapper, current repo
+pac-llm aider                       # ask-only Aider, honors saved coder port; does not edit .gitignore
 pac-llm stop coder                  # only our managed process group
 pac-llm stop web
 ```
@@ -96,7 +110,7 @@ The default coder is `Qwen/Qwen3-Coder-30B-A3B-Instruct`, BF16, 16k context, 0.7
 - The launcher refuses to claim an occupied API port, even if the process was started manually. It does not kill unmanaged processes.
 - Run metadata is per host and per user; before signaling a process group, it validates PID, Linux process starttime, owner, and process-group leader. `stop --force` is for a **verified managed** group only.
 - All logs and WebUI credentials stay under the research root, never in Git. WebUI accounts and chats persist under `$PAC_LLM_BASE/webui/data`. The launcher reuses the existing secret key and data directory.
-- Aider uses your existing `$PAC_LLM_BASE/run_aider_local.sh`, which defaults to read-only ask mode and port 8000. Using a different coding port requires updating that old wrapper.
+- `pac-llm aider` launches uv or Conda Aider in ask-only mode, honors the configured coder port, disables Aider's automatic `.gitignore` update, and preserves a real global `~/.gitconfig` if present. The old `run_aider_local.sh` remains unchanged for manual use. For exact code explanations, enter `/read-only bin/pac-llm bin/pac_llm_bootstrap.py` in Aider; a repository map alone supplies only summaries.
 - If you started vLLM/Open WebUI manually before adopting this launcher, shut them down by their **original terminal or known PID**. The launcher will report the port as unmanaged and refuse to kill it.
 - Open WebUI's RAG/embedding setup is independent of chat inference; an expired Hugging Face token may break document retrieval without preventing chat. The launcher disables implicit Hugging Face tokens only in the WebUI process.
 - Enabling auto-tool-choice lets models request tools. Review Open WebUI workspace tools/skills permissions and verify claimed actions; a model saying “I created a skill” is not evidence it actually did.
@@ -111,7 +125,7 @@ Tests use fake `nvidia-smi` and fake HTTP serving scripts, so they never load a 
 
 ## Known limits
 
-- This intentionally does not install vLLM, Open WebUI, or model weights; follow the lab-specific setup guide first.
+- Explicit `setup --yes` installs missing executables but does not update existing environments or fully lock dependencies. Model downloads must be requested separately.
 - On a fresh installation without `env_local_agent.sh`, it sets a minimal subset of cache locations; review other XDG/HF caches before downloading models.
 - If two profiles are started, Open WebUI's current single backend points at coder. Add reasoning API at `http://127.0.0.1:8001/v1` in **Admin → Settings → Connections** as needed.
 - Process-state management is Linux-specific (`/proc`), and service metadata is per machine. Shared NFS storage does not mean a localhost service is reachable on another host.

@@ -41,6 +41,94 @@ PROFILES = {
     },
 }
 SERVICES = ("coder", "reasoner", "web")
+CONFIG_KEYS = {
+    "gpu": "PAC_LLM_GPU", "gpus": "PAC_LLM_GPUS",
+    "coder_port": "PAC_LLM_CODER_PORT", "reasoner_port": "PAC_LLM_REASONER_PORT",
+    "web_port": "PAC_LLM_WEB_PORT", "model": "PAC_LLM_MODEL",
+    "offline": "PAC_LLM_OFFLINE",
+}
+
+def fail(message):
+    raise RuntimeError(message)
+
+def check_config_value(key, value):
+    value = str(value).strip()
+    if key not in CONFIG_KEYS:
+        fail("Unknown config key: " + key)
+    if key.endswith("port"):
+        try:
+            if not 1024 <= int(value) <= 65535:
+                raise ValueError()
+        except ValueError:
+            fail("Choose a port between 1024 and 65535")
+    elif key in ("gpu", "gpus"):
+        try:
+            values = [int(x) for x in value.split(",")]
+            if not values or any(x < 0 for x in values) or len(set(values)) != len(values):
+                raise ValueError()
+            if key == "gpu" and len(values) != 1:
+                raise ValueError()
+        except ValueError:
+            fail("GPU must be a nonnegative integer; gpus is a distinct comma-separated list")
+    elif key == "offline" and value not in ("0", "1"):
+        fail("offline must be 0 or 1")
+    elif key == "model" and (not value or any(ch.isspace() for ch in value)):
+        fail("model must be a nonempty Hugging Face model ID without whitespace")
+    return value
+
+def config_path(w):
+    return w.base / "config" / "pac-llm.json"
+
+def read_config(w):
+    p = config_path(w)
+    if not p.exists():
+        return {}
+    try:
+        config = json.loads(p.read_text())
+    except (OSError, ValueError) as exc:
+        fail(f"Cannot read {p}: {exc}")
+    if not isinstance(config, dict):
+        fail("Expected a configuration JSON object")
+    return {key: check_config_value(key, value) for key, value in config.items()}
+
+def write_config(w, config):
+    p = config_path(w)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.parent.chmod(0o700)
+    tmp = p.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as output:
+        json.dump(config, output, indent=2, sort_keys=True)
+        output.write("\n")
+    os.replace(tmp, p)
+    p.chmod(0o600)
+
+def apply_config(w):
+    for key, value in read_config(w).items():
+        os.environ.setdefault(CONFIG_KEYS[key], value)
+
+def cmd_config(w, args):
+    if args.operation == "show":
+        print(f"Personal configuration: {config_path(w)}")
+        print(json.dumps(read_config(w), indent=2, sort_keys=True))
+        print("Precedence: CLI > environment > saved configuration > defaults")
+        return
+    with locked(w):
+        settings = read_config(w)
+        if args.operation == "init":
+            if config_path(w).exists():
+                fail("Configuration already exists; use config set")
+            settings = {"coder_port": "8000", "reasoner_port": "8001", "web_port": "8080", "offline": "1"}
+            for key in ("gpu", "coder_port", "reasoner_port", "web_port"):
+                val = getattr(args, key, None)
+                if val is not None:
+                    settings[key] = check_config_value(key, val)
+        else:
+            settings[args.key] = check_config_value(args.key, args.value)
+        write_config(w, settings)
+        print(f"Saved {config_path(w)}")
+
+
 
 
 def root_path():
@@ -177,9 +265,10 @@ def gpu_stats():
 
 def gpu_choice(name, args, profile):
     n = profile["gpus"]
-    text = args.gpus or os.environ.get("PAC_LLM_GPUS")
-    if not text and n == 1:
-        text = args.gpu or os.environ.get("PAC_LLM_GPU")
+    if n == 1:
+        text = args.gpu or args.gpus or os.environ.get("PAC_LLM_GPU") or os.environ.get("PAC_LLM_GPUS")
+    else:
+        text = args.gpus or os.environ.get("PAC_LLM_GPUS")
     if not text:
         fail("Specify --gpu 0 (coder), --gpus 0,1 (reasoner), or PAC_LLM_GPU/PAC_LLM_GPUS")
     try:
@@ -347,6 +436,7 @@ def cmd_logs(w, args):
 
 def cmd_doctor(w, _args):
     print(f"Host: {w.host}\nROOT: {w.root}\nBASE: {w.base}")
+    print(f"Personal config: {config_path(w)} exists={config_path(w).is_file()}")
     print(f"vLLM: {w.vllm_env / 'bin/vllm'} exists={(w.vllm_env / 'bin/vllm').is_file()}")
     print(f"Ninja: {w.vllm_env / 'bin/ninja'} exists={(w.vllm_env / 'bin/ninja').is_file()}")
     print(f"WebUI: {w.web_env / 'bin/open-webui'} exists={(w.web_env / 'bin/open-webui').is_file()}")
@@ -360,12 +450,38 @@ def cmd_doctor(w, _args):
 
 
 def cmd_aider(w, args):
-    wrapper = w.base / "run_aider_local.sh"
-    if not wrapper.is_file():
-        fail(f"Existing Aider wrapper missing: {wrapper}")
+    # Launch Aider directly. Legacy June wrappers hard-coded port 8000,
+    # which would ignore a colleague's saved per-user coder port.
+    choices = (w.root / "conda-envs/aider/bin/aider", w.base / "bin/aider")
+    executable = next((p for p in choices if p.is_file() and os.access(p, os.X_OK)), None)
+    if executable is None:
+        fail("Aider missing; run pac-llm setup --components aider --yes")
     env = source_environment(w)
-    print("Using Aider (ask-only default), connected to coder port", w.port("coder"))
-    os.execvpe(str(wrapper), [str(wrapper), *args.aider_args], env)
+    private_home = w.base / "aider_home"
+    private_home.mkdir(parents=True, exist_ok=True)
+    private_home.chmod(0o700)
+    # Aider files live in research storage, but Git should still see the
+    # real user's existing global identity/config instead of a blank HOME.
+    real_git_config = Path.home() / ".gitconfig"
+    if real_git_config.is_file():
+        env.setdefault("GIT_CONFIG_GLOBAL", str(real_git_config))
+    env.update({
+        "HOME": str(private_home),
+        "OPENAI_API_BASE": f"http://127.0.0.1:{w.port('coder')}/v1",
+        "OPENAI_API_KEY": "dummy",
+        "AIDER_CHECK_UPDATE": "false",
+        "AIDER_SHOW_RELEASE_NOTES": "false",
+        "AIDER_ANALYTICS_DISABLE": "true",
+        "AIDER_AUTO_COMMITS": "false",
+        "AIDER_DIRTY_COMMITS": "false",
+    })
+    cmd = [str(executable), "--model", "openai/local-qwen-coder", "--chat-mode", "ask",
+           "--no-auto-commits", "--no-dirty-commits", "--no-check-update",
+           "--no-gitignore", "--no-show-model-warnings"]
+    if Path("AGENTS.md").is_file():
+        cmd.extend(["--read", "AGENTS.md"])
+    print(f"Using Aider (ask-only default), connected to {env['OPENAI_API_BASE']}", flush=True)
+    os.execvpe(str(executable), cmd + args.aider_args, env)
 
 
 def main(argv=None):
@@ -391,11 +507,44 @@ def main(argv=None):
     sub.add_parser("doctor", help="Check existing paths, GPUs, and endpoints")
     aider = sub.add_parser("aider", help="Launch June's Aider wrapper in the current repo")
     aider.add_argument("aider_args", nargs=argparse.REMAINDER)
+    config = sub.add_parser("config", help="Manage per-user defaults")
+    config_sub = config.add_subparsers(dest="operation", required=True)
+    config_sub.add_parser("show")
+    ci = config_sub.add_parser("init")
+    ci.add_argument("--gpu")
+    ci.add_argument("--coder-port", type=int)
+    ci.add_argument("--reasoner-port", type=int)
+    ci.add_argument("--web-port", type=int)
+    cs = config_sub.add_parser("set")
+    cs.add_argument("key", choices=tuple(CONFIG_KEYS))
+    cs.add_argument("value")
+    setup = sub.add_parser("setup", help="Preview or explicitly install missing dependencies")
+    setup.add_argument("--components", default="vllm,web,aider")
+    setup.add_argument("--download-coder", action="store_true")
+    setup.add_argument("--download-reasoner", action="store_true")
+    setup.add_argument("--yes", action="store_true")
     args = p.parse_args(argv)
     try:
         w = Workspace()
-        {"start": cmd_start, "status": cmd_status, "stop": cmd_stop,
-         "logs": cmd_logs, "doctor": cmd_doctor, "aider": cmd_aider}[args.action](w, args)
+        apply_config(w)
+        if args.action == "config":
+            cmd_config(w, args)
+        elif args.action == "setup":
+            from pac_llm_bootstrap import install
+            components = {part.strip() for part in args.components.split(",") if part.strip()}
+            if not components or not components <= {"vllm", "web", "aider"}:
+                fail("--components must contain vllm,web,aider")
+            downloads = []
+            if args.download_coder:
+                downloads.append(PROFILES["coder"]["model"])
+            if args.download_reasoner:
+                downloads.append(PROFILES["reasoner"]["model"])
+            if downloads and "vllm" not in components and not (w.vllm_env / "bin/hf").is_file():
+                fail("Install vllm before downloading model weights")
+            install(w, components, downloads, args.yes, source_environment)
+        else:
+            {"start": cmd_start, "status": cmd_status, "stop": cmd_stop,
+             "logs": cmd_logs, "doctor": cmd_doctor, "aider": cmd_aider}[args.action](w, args)
     except (RuntimeError, OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
