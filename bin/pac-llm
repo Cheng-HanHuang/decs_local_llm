@@ -450,12 +450,32 @@ def cmd_doctor(w, _args):
 
 
 def cmd_aider(w, args):
-    wrapper = w.base / "run_aider_local.sh"
-    if not wrapper.is_file():
-        fail(f"Existing Aider wrapper missing: {wrapper}")
+    # Launch Aider directly. Legacy June wrappers hard-coded port 8000,
+    # which would ignore a colleague's saved per-user coder port.
+    choices = (w.root / "conda-envs/aider/bin/aider", w.base / "bin/aider")
+    executable = next((p for p in choices if p.is_file() and os.access(p, os.X_OK)), None)
+    if executable is None:
+        fail("Aider missing; run pac-llm setup --components aider --yes")
     env = source_environment(w)
-    print("Using Aider (ask-only default), connected to coder port", w.port("coder"))
-    os.execvpe(str(wrapper), [str(wrapper), *args.aider_args], env)
+    private_home = w.base / "aider_home"
+    private_home.mkdir(parents=True, exist_ok=True)
+    private_home.chmod(0o700)
+    env.update({
+        "HOME": str(private_home),
+        "OPENAI_API_BASE": f"http://127.0.0.1:{w.port('coder')}/v1",
+        "OPENAI_API_KEY": "dummy",
+        "AIDER_CHECK_UPDATE": "false",
+        "AIDER_SHOW_RELEASE_NOTES": "false",
+        "AIDER_ANALYTICS_DISABLE": "true",
+        "AIDER_AUTO_COMMITS": "false",
+        "AIDER_DIRTY_COMMITS": "false",
+    })
+    cmd = [str(executable), "--model", "openai/local-qwen-coder", "--chat-mode", "ask",
+           "--no-auto-commits", "--no-dirty-commits", "--no-check-update"]
+    if Path("AGENTS.md").is_file():
+        cmd.extend(["--read", "AGENTS.md"])
+    print(f"Using Aider (ask-only default), connected to {env['OPENAI_API_BASE']}", flush=True)
+    os.execvpe(str(executable), cmd + args.aider_args, env)
 
 
 def main(argv=None):
