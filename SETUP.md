@@ -88,6 +88,6 @@ Visit http://localhost:19080 in the laptop browser.
 - The GPU check reports high utilization and rejects insufficient available VRAM; it cannot reserve VRAM against concurrent users.
 - An occupied port is reported as `unmanaged port` unless the launcher owns the process. It never kills unrelated services.
 - `setup` only installs *missing executables*; it does not upgrade or overwrite environments. Setup can require significant disk space. Test compatibility before wide lab rollout.
-- The existing June Aider wrapper hardcodes port 8000, and is deliberately preserved. Fresh installs create a port-aware wrapper. Adapt the old wrapper when changing that account's coding port.
+- `pac-llm aider` calls the per-user uv or Conda Aider binary directly, uses the configured coder port, and defaults to ask-only mode. The old June wrapper is preserved for manual usage, but it still hardcodes port 8000; prefer `pac-llm aider` for custom ports.
 - The default tool parser `qwen3_xml` is configured only for the known Qwen3-Coder model.
 - Inference is offline by default once model weights are cached. RAG embeddings/downloads are separate from inference.
