@@ -35,9 +35,12 @@ def setup_steps(w, components, downloads):
     if "aider" in components:
         aider_env = w.root / "conda-envs/aider"
         py = aider_env / "bin/python"
-        if not executable(py):
-            steps.append(("Create Aider environment", [conda, "create", "-p", str(aider_env), "python=3.12", "pip", "-y"]))
-        if not executable(aider_env / "bin/aider") and not executable(w.base / "bin/aider"):
+        # June's working Aider is installed with uv at local_llm/bin/aider.
+        # A valid standalone Aider is enough: no duplicate Conda environment.
+        installed = executable(aider_env / "bin/aider") or executable(w.base / "bin/aider")
+        if not installed:
+            if not executable(py):
+                steps.append(("Create Aider environment", [conda, "create", "-p", str(aider_env), "python=3.12", "pip", "-y"]))
             steps.append(("Install pinned Aider", [str(py), "-m", "pip", "install", f"aider-chat=={AIDER}"]))
         if not (w.base / "run_aider_local.sh").is_file():
             steps.append(("Write safe Aider wrapper", None))
