@@ -72,6 +72,8 @@ class SetupConfigTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("BASE=http://127.0.0.1:18100/v1", r.stdout)
         self.assertIn("--chat-mode ask", r.stdout)
+        self.assertIn("--no-gitignore", r.stdout)
+        self.assertIn("--no-show-model-warnings", r.stdout)
         self.assertIn(str(self.root / "local_llm/aider_home"), r.stdout)
 
     def test_config_init_does_not_overwrite(self):
