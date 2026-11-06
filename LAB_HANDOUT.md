@@ -73,6 +73,18 @@ over it or overwrite local changes; use `git status`, `git fetch`, and
 a separate Git worktree. An existing `pac-llm` symlink should be checked
 with `readlink -f "$(command -v pac-llm)"` before any changes.
 
+For each **new PAC terminal**, restore the basic shell variables:
+
+```bash
+export PAC_LLM_ROOT=/egr/research-pac/$USER
+export ROOT="$PAC_LLM_ROOT"
+export PATH="$ROOT/local_llm/bin:$PATH"
+```
+
+This is particularly important after opening a second terminal for vLLM
+evaluation or a coding agent. Saved `pac-llm config` settings persist,
+but ordinary shell variables do not propagate between independent terminals.
+
 Conda must be available as `conda` on the user's PATH. If not, use
 the PAC-supported module/installation instructions; don't install Conda
 into a shared system location.
