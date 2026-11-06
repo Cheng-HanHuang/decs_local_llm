@@ -26,10 +26,13 @@ def environment_has_package(python, distribution):
         return False
     code = ("from importlib.metadata import version; "
             f"version({distribution!r})")
-    p = subprocess.run([str(python), "-c", code],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                       check=False, timeout=15)
-    return p.returncode == 0
+    try:
+        p = subprocess.run([str(python), "-c", code],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           check=False, timeout=15)
+        return p.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def setup_steps(w, components, downloads):
