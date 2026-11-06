@@ -125,6 +125,29 @@ export HF_HUB_OFFLINE=1
 "$ENV/bin/python" "$REPO/experiments/lora_demo/demo.py" \
   prepare --run-dir "$RUN"
 
+# CPU-only tokenizer smoke: dataset is under lora-demo/runs,
+# not under the experiment source worktree.
+export LORA_DEMO_RUN="$RUN"
+export LORA_DEMO_SCRIPT="$REPO/experiments/lora_demo/demo.py"
+"$ENV/bin/python" - <<'PY'
+import importlib.util, json, os
+from pathlib import Path
+from transformers import AutoTokenizer
+
+source = Path(os.environ["LORA_DEMO_SCRIPT"])
+run = Path(os.environ["LORA_DEMO_RUN"])
+spec = importlib.util.spec_from_file_location("toy_lora", source)
+demo = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(demo)
+tok = AutoTokenizer.from_pretrained("Qwen/Qwen3-0.6B")
+row = json.loads((run / "train.jsonl").read_text().splitlines()[0])
+ids, labels = demo.make_tokens(tok, row)
+print("Tokenization: PASS")
+print("Sequence length:", len(ids))
+print("Supervised tokens:", sum(x != -100 for x in labels))
+print("Target:", row["target"])
+PY
+
 # Verify CUDA availability on the requested physical GPU.
 CUDA_VISIBLE_DEVICES=2 "$ENV/bin/python" -c \
   'import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))'
