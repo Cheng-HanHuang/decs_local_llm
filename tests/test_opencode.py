@@ -38,7 +38,7 @@ class OpenCodeTests(unittest.TestCase):
         cfg = mod.make_config(18100, "local-qwen-coder", 8192, "read")
         self.assertEqual(cfg["model"], "pac/coder")
         self.assertEqual(cfg["default_agent"], "pac-read")
-        self.assertEqual(cfg["agents"]["pac-read"]["steps"], 3)
+        self.assertEqual(cfg["agents"]["pac-read"]["steps"], 8)
         self.assertFalse(cfg["compaction"]["auto"])
         self.assertIn({"action": "tool.use", "resource": "shell:*", "effect": "deny"}, cfg["policies"])
         self.assertIn({"action": "tool.use", "resource": "edit:*", "effect": "deny"}, cfg["policies"])
@@ -52,8 +52,18 @@ class OpenCodeTests(unittest.TestCase):
         self.assertNotIn({"action": "shell", "resource": "*", "effect": "ask"}, rules)
         edit = mod.make_config(18100, "local-qwen-coder", 8192, "edit")
         self.assertEqual(edit["default_agent"], "pac-edit")
-        self.assertEqual(edit["agents"]["pac-edit"]["steps"], 5)
+        self.assertEqual(edit["agents"]["pac-edit"]["steps"], 16)
         self.assertNotIn({"action": "tool.use", "resource": "edit:*", "effect": "deny"}, edit["policies"])
+
+    def test_override_budget_and_validation(self):
+        read = mod.make_config(18100, "local-qwen-coder", 16384, "read", steps=12)
+        edit = mod.make_config(18100, "local-qwen-coder", 16384, "edit", steps=24)
+        self.assertEqual(read["agents"]["pac-read"]["steps"], 12)
+        self.assertEqual(edit["agents"]["pac-edit"]["steps"], 24)
+        with self.assertRaises(RuntimeError):
+            mod.make_config(18100, "local-qwen-coder", 16384, "edit", steps=0)
+        with self.assertRaises(RuntimeError):
+            mod.make_config(18100, "local-qwen-coder", 16384, "edit", steps=100)
 
     def test_opencode_install_preview(self):
         r = self.cmd("setup", "--components", "opencode")
@@ -72,11 +82,12 @@ class OpenCodeTests(unittest.TestCase):
         node.parent.mkdir(parents=True, exist_ok=True)
         node.write_text("#!/bin/sh\nexit 0\n")
         node.chmod(0o755)
-        r = self.cmd("opencode", "--preview")
+        r = self.cmd("opencode", "--preview", "--steps", "14")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("Preview only", r.stdout)
         config = json.loads((self.root / "local_llm/opencode/config/agent-read.json").read_text())
         self.assertEqual(config["model"], "pac/coder")
+        self.assertEqual(config["agents"]["pac-read"]["steps"], 14)
         self.assertEqual(config["permissions"][0]["effect"], "deny")
 
     def test_edit_mode_refuses_normal_checkout(self):
