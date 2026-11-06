@@ -166,11 +166,16 @@ def train(run_dir, steps, seed, lr, force=False):
     adapter.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(adapter, safe_serialization=True)
     tok.save_pretrained(adapter)
-    # Show that a nonzero low-rank update was learned.
+    # PEFT initializes lora_B to zero. A nonzero post-training B norm
+    # demonstrates the adapter departed from its initial zero update.
     lora_norm_sq = 0.0
+    lora_b_norm_sq = 0.0
     for name, p in model.named_parameters():
         if p.requires_grad:
-            lora_norm_sq += float(p.detach().float().square().sum().cpu())
+            sq = float(p.detach().float().square().sum().cpu())
+            lora_norm_sq += sq
+            if "lora_B" in name:
+                lora_b_norm_sq += sq
     receipt = {
         "model_id": MODEL_ID, "seed": seed, "steps": steps, "lr": lr,
         "rank": 8, "alpha": 16, "target_modules": ["q_proj", "v_proj"],
@@ -178,6 +183,7 @@ def train(run_dir, steps, seed, lr, force=False):
         "first_loss": losses[0], "last_loss": losses[-1],
         "elapsed_seconds": time.time() - t0,
         "trainable_parameter_l2_norm": lora_norm_sq ** 0.5,
+        "lora_B_l2_norm": lora_b_norm_sq ** 0.5,
         "max_gpu_memory_allocated_gib":
             torch.cuda.max_memory_allocated() / 1024 ** 3,
         "torch_version": torch.__version__,
