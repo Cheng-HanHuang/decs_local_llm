@@ -192,6 +192,8 @@ def read_status(root):
 
 def save_status(root, state):
     file = status_path(root)
+    file.parent.mkdir(parents=True, exist_ok=True)
+    file.parent.chmod(0o700)
     temp = file.with_name("status.tmp")
     with temp.open("w", encoding="utf-8") as out:
         json.dump(state, out, indent=2, sort_keys=True)
