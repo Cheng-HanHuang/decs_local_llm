@@ -26,6 +26,22 @@ Changing this to nontrivial arithmetic is a *separate* experiment.
 Model: [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B)
 (Transformers >=4.51). We use Qwen3's *non-thinking* chat template.
 
+## 0. Check out the experiment without disturbing the agent worktree
+
+```bash
+ROOT=/egr/research-pac/$USER
+BASE="$ROOT/local_llm"
+REPO="$BASE/lora-demo/source"
+mkdir -p "$BASE/lora-demo"
+git -C "$ROOT/decs_local_llm" fetch origin experiment/qwen3-small-lora-demo
+git -C "$ROOT/decs_local_llm" worktree add --detach \
+  "$REPO" origin/experiment/qwen3-small-lora-demo
+```
+
+If the worktree already exists, inspect it rather than running `git worktree
+add` again. This is a distinct checkout: do not reuse or modify your
+OpenCode edit-test worktree.
+
 ## 1. First release GPU 2, if needed
 
 If your big Qwen coder is still running, exit the agent session, then:
@@ -100,7 +116,7 @@ Use a **fresh** run directory. The data and training receipt stay outside Git.
 ROOT=/egr/research-pac/$USER
 BASE="$ROOT/local_llm"
 ENV="$ROOT/conda-envs/lora-demo"
-REPO="$ROOT/decs_local_llm"
+REPO="$BASE/lora-demo/source"
 RUN="$BASE/lora-demo/runs/ack-v1"
 export HF_HOME="$BASE/hf_cache"
 export HF_HUB_CACHE="$BASE/hf_cache/hub"
@@ -166,7 +182,7 @@ ROOT=/egr/research-pac/$USER
 RUN="$ROOT/local_llm/lora-demo/runs/ack-v1"
 ENV="$ROOT/conda-envs/lora-demo"
 
-"$ENV/bin/python" "$ROOT/decs_local_llm/experiments/lora_demo/demo.py" \
+"$ENV/bin/python" "$ROOT/local_llm/lora-demo/source/experiments/lora_demo/demo.py" \
   evaluate --run-dir "$RUN" --port 18002
 ```
 
