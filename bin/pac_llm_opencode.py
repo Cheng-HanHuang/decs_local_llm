@@ -70,37 +70,52 @@ def permission_rules(mode: str):
     return rules
 
 
-def make_config(port: int, model_id: str, context: int, mode: str):
+def make_config(port: int, model_id: str, context: int, mode: str, steps=None):
+    if mode not in ("read", "edit"):
+        _fail("Mode must be read or edit")
+    # V2 steps count agent/model iterations, including exploration. A low
+    # number can exhaust the budget before the first edit or verification.
+    default_steps = 8 if mode == "read" else 16
+    if steps is None:
+        steps = default_steps
+    if not isinstance(steps, int) or not 2 <= steps <= 48:
+        _fail("--steps must be an integer between 2 and 48")
     output = max(128, min(2048, context // 4))
     cfg = {
         "$schema": "https://opencode.ai/config.json",
         "model": "pac/coder",
         "small_model": "pac/coder",
-        # Prevent the previously observed Qwen summary/compaction cycle.
-        # A short explicit step budget forces a text-only final turn.
+        # Bounded iterations prevent endless loops while allowing enough
+        # read/search/edit cycles for an ordinary small coding task.
         "default_agent": "pac-read" if mode == "read" else "pac-edit",
         "agents": {
             "pac-read": {
                 "mode": "primary",
-                "description": "Short read-only local code review",
-                "steps": 3,
+                "description": "Bounded read-only local code review",
+                "steps": steps if mode == "read" else 8,
                 "system": (
-                    "You are a code reader. Read only the minimum source needed; "
-                    "then answer the user's question directly and concretely. "
-                    "Never output Objective, Decisions, Work State, Next Move, "
-                    "or compaction summaries. Do not read the same file twice "
-                    "unless the first read failed. Do not modify files."
+                    "You are a code reader. When the user names a file, read "
+                    "that file directly instead of searching for its functions "
+                    "as paths. Answer directly once evidence is sufficient. "
+                    "Never output Objective, Decisions, Work State, Next Move "
+                    "or compaction summaries. Do not reread a file without "
+                    "a concrete need. Do not modify files."
                 ),
             },
             "pac-edit": {
                 "mode": "primary",
                 "description": "Explicitly approved edits in a disposable worktree",
-                "steps": 5,
+                "steps": steps if mode == "edit" else 16,
                 "system": (
                     "Work only in the current disposable Git worktree. "
-                    "Request permission before every file edit or shell command. "
-                    "Make the smallest requested change and summarize it. "
-                    "Never repeat a completed tool call without a concrete reason."
+                    "If the user gives an exact file path, read it directly; "
+                    "do not search for a function name as though it is a filename. "
+                    "For a small requested edit, inspect the given file once, "
+                    "then make the smallest change promptly rather than spending "
+                    "many steps on redundant searches. Request permission before "
+                    "every edit or shell command. If asked not to run commands, "
+                    "do not run any. Summarize what actually changed. "
+                    "Never repeat a tool call without a concrete reason."
                 ),
             },
         },
@@ -199,7 +214,7 @@ def launch(w, args):
         model, context = preferred or "local-qwen-coder", 8192
     else:
         model, context = probe_model(w.port("coder"), preferred)
-    config = make_config(w.port("coder"), model, context, mode)
+    config = make_config(w.port("coder"), model, context, mode, args.steps)
     # Inline config has higher precedence than untrusted project configs.
     # OpenCode permissions are NOT an OS-level sandbox.
     env["OPENCODE_CONFIG_CONTENT"] = json.dumps(config)
@@ -209,9 +224,9 @@ def launch(w, args):
     env["OPENCODE_CONFIG"] = str(target)
     if args.preview:
         print(json.dumps(config, indent=2))
-        print(f"\nPreview only: {cwd}, mode={mode}. No agent launched.")
+        print(f"\nPreview only: {cwd}, mode={mode}, steps={config['agents'][config['default_agent']]['steps']}. No agent launched.")
         return
-    print(f"OpenCode: mode={mode} model={model} context={context}", flush=True)
+    print(f"OpenCode: mode={mode} model={model} context={context} steps={config['agents'][config['default_agent']]['steps']}", flush=True)
     print(f"Repository: {cwd}", flush=True)
     print("Review permission requests; avoid 'always' for shell/edit.", flush=True)
     os.execvpe(str(executable), [str(executable), "--standalone"], env)
