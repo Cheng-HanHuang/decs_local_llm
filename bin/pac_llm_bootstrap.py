@@ -14,13 +14,33 @@ CPU_TORCH = "2.8.0"  # available CPU wheels; WebUI dependency compatibility need
 def executable(path):
     return path.is_file() and os.access(path, os.X_OK)
 
+
+def existing_conda_operation(prefix):
+    """Resume a partially initialized Conda prefix rather than re-create it."""
+    return "install" if (prefix / "conda-meta").is_dir() else "create"
+
+
+def environment_has_package(python, distribution):
+    """Check metadata in its own environment, without importing a large library."""
+    if not executable(python):
+        return False
+    code = ("from importlib.metadata import version; "
+            f"version({distribution!r})")
+    p = subprocess.run([str(python), "-c", code],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       check=False, timeout=15)
+    return p.returncode == 0
+
+
 def setup_steps(w, components, downloads):
     conda = shutil.which("conda") or "conda"
     steps = []
     if "vllm" in components:
         py = w.vllm_env / "bin/python"
         if not executable(py):
-            steps.append(("Create vLLM environment", [conda, "create", "-p", str(w.vllm_env), "python=3.11", "pip", "-y"]))
+            steps.append(("Create/resume vLLM environment", [conda,
+                existing_conda_operation(w.vllm_env), "-p", str(w.vllm_env),
+                "python=3.11", "pip", "-y"]))
         if not executable(w.vllm_env / "bin/vllm"):
             steps.append(("Install pinned vLLM", [str(py), "-m", "pip", "install", f"vllm=={VLLM}"]))
         if not executable(w.vllm_env / "bin/ninja"):
@@ -28,8 +48,15 @@ def setup_steps(w, components, downloads):
     if "web" in components:
         py = w.web_env / "bin/python"
         if not executable(py):
-            steps.append(("Create WebUI environment", [conda, "create", "-p", str(w.web_env), "python=3.12", "pip", "-y"]))
-            steps.append(("Install CPU PyTorch", [str(py), "-m", "pip", "install", f"torch=={CPU_TORCH}", "--index-url", "https://download.pytorch.org/whl/cpu"]))
+            steps.append(("Create/resume WebUI environment", [conda,
+                existing_conda_operation(w.web_env), "-p", str(w.web_env),
+                "python=3.12", "pip", "-y"]))
+        # Partial setup can leave Python but not PyTorch. Install CPU-only
+        # torch in that case, even on a rerun; preserve working environments.
+        if not executable(w.web_env / "bin/open-webui") and not environment_has_package(py, "torch"):
+            steps.append(("Install CPU PyTorch", [str(py), "-m", "pip", "install",
+                          f"torch=={CPU_TORCH}", "--index-url",
+                          "https://download.pytorch.org/whl/cpu"]))
         if not executable(w.web_env / "bin/open-webui"):
             steps.append(("Install pinned Open WebUI", [str(py), "-m", "pip", "install", f"open-webui=={WEBUI}"]))
     if "aider" in components:
@@ -40,7 +67,9 @@ def setup_steps(w, components, downloads):
         installed = executable(aider_env / "bin/aider") or executable(w.base / "bin/aider")
         if not installed:
             if not executable(py):
-                steps.append(("Create Aider environment", [conda, "create", "-p", str(aider_env), "python=3.12", "pip", "-y"]))
+                steps.append(("Create/resume Aider environment", [conda,
+                    existing_conda_operation(aider_env), "-p", str(aider_env),
+                    "python=3.12", "pip", "-y"]))
             steps.append(("Install pinned Aider", [str(py), "-m", "pip", "install", f"aider-chat=={AIDER}"]))
         if not (w.base / "run_aider_local.sh").is_file():
             steps.append(("Write safe Aider wrapper", None))
