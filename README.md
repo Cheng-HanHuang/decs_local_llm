@@ -4,6 +4,26 @@ A small, **per-user, localhost-only** launcher for existing vLLM, Open WebUI, an
 
 This is a per-user service manager with an **explicit, opt-in setup command**. Existing vLLM/Open WebUI service operation has been validated on PAC; the new installation path still needs a first-time lab-member test.
 
+## OpenCode local agent (V2)
+
+See [OPENCODE.md](OPENCODE.md) for a per-user OpenCode 2.2.5 setup,
+read-only review, and explicit worktree-only edit tests.
+[LoRA demonstration plan](LORA_DEMO_PLAN.md) describes the next small-model
+SFT experiment; it does not start training.
+
+```bash
+pac-llm setup --components opencode        # preview
+pac-llm setup --components opencode --yes  # optional Node/OpenCode installation
+pac-llm opencode --preview                 # inspect model and permissions
+pac-llm opencode                           # read-only agent, default 8 steps
+pac-llm opencode --mode edit --steps 16    # approved edits in linked worktree only
+```
+
+The agent uses the existing vLLM backend and does not allocate another GPU.
+Before starting the coder, choose a GPU with adequate *current* free memory
+(`pac-llm doctor`). For controlled edits, use
+`pac-llm opencode --mode edit` **only inside a disposable linked worktree**.
+
 ## New: per-user onboarding
 
 See [SETUP.md](SETUP.md) for detailed lab instructions.

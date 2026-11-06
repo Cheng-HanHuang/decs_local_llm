@@ -80,5 +80,11 @@ class SetupConfigTests(unittest.TestCase):
         self.assertEqual(self.cmd("config", "init").returncode, 0)
         self.assertNotEqual(self.cmd("config", "init").returncode, 0)
 
+    def test_config_set_gpus_invalid_returns_nonzero_exit_code(self):
+        # Duplicate GPU indices must fail validation, not just generic parsing.
+        result = self.cmd("config", "set", "gpus", "2,2")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("distinct", result.stderr)
+
 if __name__ == "__main__":
     unittest.main()
