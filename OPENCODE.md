@@ -28,16 +28,16 @@ pac-llm start coder --gpu 2 --memory-util 0.16 --max-model-len 16384
 pac-llm status
 ```
 
-This is the proposed **Qwen3-4B-Instruct-2507** workshop profile,
-not the earlier validated 30B Coder profile. The 4B model is much
-smaller, but **local OpenCode tool use remains untested with it**.
+This is the live-tested **Qwen3-4B-Instruct-2507** workshop profile.
+On PAC, it successfully read the launcher source and made an approved
+test edit; the first attempt failed one assertion, then it repaired it
+after test feedback and the independent unit suite passed.
 Always use current `pac-llm doctor` and coordinate GPU allocations.
 vLLM may still run out of memory if other GPU workloads grow.
 
 The 4B default uses `--enable-auto-tool-choice --tool-call-parser hermes`,
-consistent with the Qwen3 Hermes-style chat template. The previously
-validated Qwen3-Coder-30B uses `qwen3_xml` instead. **Do not assume a
-small model's tool calling works just because its chat works.** Run
+as validated in our PAC chat/structured tool-call smoke. **Do not assume
+chatting is equivalent to tool calling.** Run
 `python3 scripts/pac_workshop_smoke.py --port <your-coder-port> --test-tools`
 before agent exercises. See [LAB_HANDOUT.md](LAB_HANDOUT.md).
 
@@ -72,7 +72,7 @@ To exit, use OpenCode's exit action or Ctrl+C. The vLLM server remains running.
 
 ## If OpenCode repeatedly summarizes or rereads the same file
 
-During a PAC trial with the **earlier Qwen3-Coder-30B** and vLLM,
+In an earlier agent trial with a different local configuration,
 the model repeatedly emitted
 `Objective / Decisions / Work State / Next Move` summaries, reread the same
 file, and entered automatic compaction without answering. This is **not**
@@ -103,9 +103,10 @@ Diagnostic test: in a *new* session ask, `Read bin/pac-llm and identify only
 the exact Python function implementing start. Reply in one sentence.`
 If the model loops again, use `pac-llm aider` for repo reading and record
 that OpenCode + the chosen model needs further compatibility work; do not
-attempt unbounded edit automation. A smaller model will usually require
-**more** explicit filenames and prompts, not fewer. Existing 30B read/edit
-success is not evidence that the new 4B model can perform the same task.
+attempt unbounded edit automation. Small models benefit from precise
+file/function names and bounded tasks. Our 4B PAC trial succeeded in
+read/edit mode but made a false safety inference and an incorrect test
+assertion before feedback; all diffs and tests require independent review.
 
 ## 4. Controlled editing in a disposable Git worktree
 
