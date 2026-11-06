@@ -113,7 +113,8 @@ class LauncherTests(unittest.TestCase):
 
     def test_refuses_low_gpu_memory(self):
         smi = self.fake_bin/'nvidia-smi'
-        smi.write_text('#!/bin/sh\necho "0, 97887, 25000, 99"\n')
+        # Below 0.16 * 97887 MiB + the 2 GiB guard for the 4B default.
+        smi.write_text('#!/bin/sh\necho "0, 97887, 8000, 99"\n')
         p=self.run_cli('start','coder','--gpu','0')
         self.assertNotEqual(p.returncode,0)
         self.assertIn('headroom',p.stderr)
