@@ -80,6 +80,10 @@ class LauncherTests(unittest.TestCase):
         data=json.loads(state[0].read_text())
         self.assertEqual(data['gpus'],[0])
         self.assertEqual(data['served_name'],'local-qwen-coder')
+        self.assertEqual(data['model'],'Qwen/Qwen3-4B-Instruct-2507')
+        self.assertEqual(data['tool_parser'],'hermes')
+        self.assertEqual(data['memory_util'],0.16)
+        self.assertEqual(data['max_model_len'],16384)
         for _ in range(40):
             p=self.run_cli('status')
             if 'api=ready' in p.stdout: break
@@ -91,6 +95,21 @@ class LauncherTests(unittest.TestCase):
         self.assertIn('already managed',bad.stderr)
         done=self.run_cli('stop','coder')
         self.assertEqual(done.returncode,0,done.stderr)
+
+    def test_opt_in_large_coder_uses_explicit_parser(self):
+        p = self.run_cli('start','coder','--gpu','0',
+                         '--model','Qwen/Qwen3-Coder-30B-A3B-Instruct',
+                         '--tool-parser','qwen3_xml',
+                         '--memory-util','0.68',
+                         '--max-model-len','8192')
+        self.assertEqual(p.returncode,0,p.stderr)
+        state = list((self.base/'run').glob('*/coder.json'))
+        data = json.loads(state[0].read_text())
+        self.assertEqual(data['model'],'Qwen/Qwen3-Coder-30B-A3B-Instruct')
+        self.assertEqual(data['tool_parser'],'qwen3_xml')
+        self.assertEqual(data['memory_util'],0.68)
+        self.assertEqual(data['max_model_len'],8192)
+        self.assertEqual(data['served_name'],'Qwen3-Coder-30B-A3B-Instruct')
 
     def test_refuses_low_gpu_memory(self):
         smi = self.fake_bin/'nvidia-smi'
