@@ -75,11 +75,18 @@ normal task completion. Interrupt it with Esc. A similar model/provider issue
 was reported upstream:
 https://github.com/anomalyco/opencode/issues/22792
 
-The launcher now uses **three read-agent steps** (five edit-agent steps)
-and disables automatic compaction. These are **containment measures**, not
-proof of a fix: upstream reporters observed looping even with auto-compaction
-disabled. Start a **new OpenCode session** after updating; an existing session
-can retain its old agent selection.
+After the initial bounded smoke tests, the **3 / 5-step budgets proved too
+short** for realistic tasks. OpenCode V2 counts agent/model iterations, not just
+edits; searches can use the entire budget before the model writes anything.
+
+The launcher now defaults to **8 read-agent steps and 16 edit-agent steps**,
+and disables automatic compaction. Set an explicit per-session budget with
+`--steps`, for example `pac-llm opencode --mode edit --steps 24`
+(allowed range: 2–48). On the last step OpenCode forces a text-only answer,
+so reaching a cap without an edit is *not* successful task completion.
+These are containment measures, **not** proof that tool loops are fixed.
+Start a **new OpenCode session** after updating; an existing session can
+retain its old agent selection or configuration.
 
 A small model context can make matters worse. Aider consumed about 10k tokens
 when reading both launcher files, so an 8k vLLM context may be inadequate.
@@ -108,7 +115,7 @@ mkdir -p "$BASE/opencode/worktrees"
 git -C "$REPO" worktree add -b agent/opencode-smoke "$WORK" HEAD
 cd "$WORK"
 
-pac-llm opencode --mode edit
+pac-llm opencode --mode edit --steps 16
 ```
 
 Edit mode checks that the current project is a *linked worktree* beneath the
@@ -119,9 +126,17 @@ or editing approvals. The permission layer does not replace an OS sandbox.
 
 Suggested task:
 
-> Add one small unit test for duplicate GPU selection in
-> tests/test_launcher.py. Make no other changes. Ask before each write
-> or shell command, and summarize the diff.
+> Open only `tests/test_setup_config.py`. Add one test method inside
+> `SetupConfigTests` that runs `pac-llm config set gpus 2,2` and asserts
+> nonzero exit status. These are Python functions and a CLI command, not
+> filenames. Do not search for other files or run shell commands; edit
+> that file directly, ask for approval, and summarize the diff.
+
+A first failed trial spent all five steps reading and searching, then
+summarized work it had **not** performed. Review `git diff` before counting
+a task as completed. You can use `--steps 24` when deeper investigation
+is actually justified; do not blindly increase the budget if the agent
+continues looping or searching for nonexistent files.
 
 After exiting, verify manually:
 
