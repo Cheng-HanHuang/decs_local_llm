@@ -66,6 +66,33 @@ configuration. Your real provider endpoint is selected from the local
 
 To exit, use OpenCode's exit action or Ctrl+C. The vLLM server remains running.
 
+## If OpenCode repeatedly summarizes or rereads the same file
+
+During a PAC trial with Qwen3-Coder and vLLM, the model repeatedly emitted
+`Objective / Decisions / Work State / Next Move` summaries, reread the same
+file, and entered automatic compaction without answering. This is **not**
+normal task completion. Interrupt it with Esc. A similar model/provider issue
+was reported upstream:
+https://github.com/anomalyco/opencode/issues/22792
+
+The launcher now uses **three read-agent steps** (five edit-agent steps)
+and disables automatic compaction. These are **containment measures**, not
+proof of a fix: upstream reporters observed looping even with auto-compaction
+disabled. Start a **new OpenCode session** after updating; an existing session
+can retain its old agent selection.
+
+A small model context can make matters worse. Aider consumed about 10k tokens
+when reading both launcher files, so an 8k vLLM context may be inadequate.
+For a new test, if GPU memory permits, serve Qwen with 16,384 tokens instead
+and ask it to read **one small function at a time**. Do not restart a current
+GPU job unless you have adequate free memory and permission to do so.
+
+Diagnostic test: in a *new* session ask, `Read bin/pac-llm and identify only
+the exact Python function implementing start. Reply in one sentence.`
+If the model loops again, use `pac-llm aider` for repo reading and record
+that OpenCode + local Qwen needs further compatibility work; do not attempt
+unbounded edit automation.
+
 ## 4. Controlled editing in a disposable Git worktree
 
 **Never test edit mode in the primary repository or a research workspace with
