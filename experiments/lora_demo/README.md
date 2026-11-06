@@ -1,6 +1,10 @@
 # GPU 2: tiny Qwen3 LoRA SFT and vLLM comparison
 
-**Status: runnable experiment candidate, not PAC-tested.**
+**Status: PAC-trained and evaluated, November 6, 2026.**
+Two 30-step training runs completed, and static vLLM inference measured
+**0/24 original vs 24/24 adapted** exact-match results on held-out
+ticket IDs for the deliberately constant output `PAC-ACK`. This is
+one-account reproducibility, **not** a verified fresh lab-account setup.
 Nothing here automatically starts a GPU job. Run commands manually.
 This demonstration changes *only LoRA adapter weights* in a dedicated
 training environment; it does not overwrite the Qwen3 base model or the
@@ -42,6 +46,12 @@ If the worktree already exists, inspect it rather than running `git worktree
 add` again. This is a distinct checkout: do not reuse or modify your
 OpenCode edit-test worktree.
 
+For a workshop with multiple accounts, begin with
+[LAB_HANDOUT.md](../../LAB_HANDOUT.md). Choose a per-user unique run
+directory, GPU, and evaluation port; do not copy the original
+`ack-v2` path across accounts. The commands below preserve the exact
+single-account PAC demonstration as an example.
+
 ## 1. First release GPU 2, if needed
 
 If your big Qwen coder is still running, exit the agent session, then:
@@ -82,8 +92,9 @@ conda create -p "$ENV" python=3.11 pip -y \
 "$ENV/bin/python" -c "import torch, transformers, peft; print(torch.__version__, transformers.__version__, peft.__version__)"
 ```
 
-Versions are an initial *candidate*, not a tested PAC lockfile. If an
-installation command fails, inspect the final 20 lines of its log and
+These versions ran the PEFT training successfully on PAC, but the full
+fresh-user installation procedure is not a locked/retested build.
+If an installation command fails, inspect the final 20 lines of its log and
 **stop**; do not continue on a half-configured environment. PyTorch
 2.8.0 CUDA 12.8 wheels are listed in
 [PyTorch official previous versions](https://pytorch.org/get-started/previous-versions/).
@@ -231,8 +242,9 @@ comparison to `evaluation.jsonl` and summary to
 `evaluation_summary.json`, under the run directory.
 
 The evaluation uses non-thinking chat, temperature 0, and a strict
-exact-match target. The base may already say the target occasionally, and
-LoRA may fail to learn it: **no result is promised before PAC execution**.
+exact-match target. In the recorded `ack-v2` run, base was 0/24 exact matches and LoRA
+was 24/24. A new lab account, different drivers or changed packages
+must rerun the evaluation rather than treating that as guaranteed.
 If no improvement appears, inspect training loss, formatting and generated
 text before changing hyperparameters.
 

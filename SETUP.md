@@ -2,6 +2,8 @@
 
 This repo contains **code and documentation only**. Each lab member owns a separate installation and model cache.
 
+For a **full teaching handout with validated/not-yet-validated checkpoints**, use [LAB_HANDOUT.md](LAB_HANDOUT.md). The candidate workshop default is **Qwen3-4B-Instruct-2507**, not the earlier large Qwen3-Coder.
+
 ## Configuration scopes
 
 | Scope | Examples | Where |
@@ -19,7 +21,8 @@ This repo contains **code and documentation only**. Each lab member owns a separ
 ```bash
 export PAC_LLM_ROOT=/egr/research-pac/$USER
 cd "$PAC_LLM_ROOT"
-git clone git@github.com:Cheng-HanHuang/decs_local_llm.git
+git clone --branch feature/pac-lab-reproducibility \
+  git@github.com:Cheng-HanHuang/decs_local_llm.git
 mkdir -p "$PAC_LLM_ROOT/local_llm/bin"
 ln -s "$PAC_LLM_ROOT/decs_local_llm/bin/pac-llm" "$PAC_LLM_ROOT/local_llm/bin/pac-llm"
 export PATH="$PAC_LLM_ROOT/local_llm/bin:$PATH"
@@ -50,9 +53,16 @@ pac-llm doctor
 
 `setup` checks for missing executables and preserves existing environments and the existing Aider wrapper. It captures large package logs to `$PAC_LLM_BASE/logs/<hostname>/setup.log`. Conda must be available in your shell.
 
-The pinned initial targets correspond to an observed working PAC environment (November 2026): vLLM 0.23.0 with Python 3.11 plus Ninja; Open WebUI 0.13.0 with Python 3.12 and CPU PyTorch; Aider 0.86.2 with Python 3.12. **Other hardware or CUDA drivers may require adaptation.** This is not a fully locked dependency environment.
+The initial pinned candidates are vLLM 0.23.0 with Python 3.11 plus
+Ninja, Open WebUI 0.13.0 with Python 3.12 plus **torch 2.8.0 CPU**,
+Aider 0.86.2, OpenCode 2.2.5 and Node 22. The previous
+`torch==2.15.0+cpu` installer pin was invalid and has been replaced.
+**Full fresh-user installation has not been validated**, especially the
+WebUI dependency resolution. Other CUDA drivers may require adaptation.
+This is not a fully locked environment.
 
-Model weights are **not** downloaded by default. Downloads can be tens to hundreds of GiB:
+Model weights are **not** downloaded by default. The workshop coder is
+a smaller 4B model; the optional advanced reasoner can be much larger:
 
 ```bash
 pac-llm setup --components vllm --download-coder --yes
@@ -67,7 +77,7 @@ Use `hf auth login` under your own account if accessing gated models. Never comm
 ```bash
 pac-llm status
 pac-llm start web
-pac-llm start coder                   # uses saved GPU, port
+pac-llm start coder                   # proposed 4B default; uses saved GPU, port
 pac-llm start coder --gpu 3           # temporary override
 pac-llm logs coder --lines 20
 pac-llm aider                         # ask-mode Aider
@@ -89,5 +99,11 @@ Visit http://localhost:19080 in the laptop browser.
 - An occupied port is reported as `unmanaged port` unless the launcher owns the process. It never kills unrelated services.
 - `setup` only installs *missing executables*; it does not upgrade or overwrite environments. Setup can require significant disk space. Test compatibility before wide lab rollout.
 - `pac-llm aider` calls the per-user uv or Conda Aider binary directly, uses the configured coder port, and defaults to ask-only mode. The old June wrapper is preserved for manual usage, but it still hardcodes port 8000; prefer `pac-llm aider` for custom ports.
-- The default tool parser `qwen3_xml` is configured only for the known Qwen3-Coder model.
+- The proposed 4B default uses `hermes` for structured tool calls;
+the previous Qwen3-Coder-30B needs `qwen3_xml`. A **plain chat response
+does not prove that tool calling works**. First run the
+`scripts/pac_workshop_smoke.py --test-tools` gate from the lab handout.
+Keep the original 30B model available with explicit
+`--model ... --tool-parser qwen3_xml` options; it is not auto-selected
+just because someone changes `PAC_LLM_MODEL` or a saved `model` key.
 - Inference is offline by default once model weights are cached. RAG embeddings/downloads are separate from inference.

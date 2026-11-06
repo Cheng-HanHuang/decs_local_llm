@@ -22,13 +22,15 @@ import urllib.request
 
 PROFILES = {
     "coder": {
-        "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        # Small, non-thinking workshop default. 30B remains opt-in via
+        # --model Qwen/Qwen3-Coder-30B-A3B-Instruct --tool-parser qwen3_xml.
+        "model": "Qwen/Qwen3-4B-Instruct-2507",
         "served": "local-qwen-coder",
         "port": 8000,
-        "memory": 0.72,
+        "memory": 0.16,
         "seqs": 2,
         "gpus": 1,
-        "parser": "qwen3_xml",
+        "parser": "hermes",
     },
     "reasoner": {
         "model": "Qwen/Qwen3-Next-80B-A3B-Thinking",
@@ -382,7 +384,10 @@ def cmd_start(w, args):
                "--max-num-seqs", str(profile["seqs"])]
         if parser:
             cmd += ["--enable-auto-tool-choice", "--tool-call-parser", parser]
-        spawn(w, name, cmd, env, {"gpus": indices, "model": model, "served_name": served})
+        spawn(w, name, cmd, env, {"gpus": indices, "model": model,
+                                  "served_name": served, "tool_parser": parser,
+                                  "memory_util": budget,
+                                  "max_model_len": args.max_model_len or 16384})
 
 
 def cmd_status(w, _args):
