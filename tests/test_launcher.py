@@ -99,7 +99,7 @@ class LauncherTests(unittest.TestCase):
     def test_custom_model_override_is_parser_opt_in(self):
         p = self.run_cli('start', 'coder', '--gpu', '0',
                          '--model', 'example/test-model',
-                         '--served-name', 'small-base',
+                         '--served-name', 'custom-model',
                          '--memory-util', '0.12',
                          '--max-model-len', '2048')
         self.assertEqual(p.returncode, 0, p.stderr)
@@ -109,7 +109,7 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(data['tool_parser'], None)
         self.assertEqual(data['memory_util'], 0.12)
         self.assertEqual(data['max_model_len'], 2048)
-        self.assertEqual(data['served_name'], 'small-base')
+        self.assertEqual(data['served_name'], 'custom-model')
 
     def test_refuses_low_gpu_memory(self):
         smi = self.fake_bin/'nvidia-smi'
