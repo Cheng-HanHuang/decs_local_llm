@@ -9,7 +9,7 @@ import subprocess
 VLLM = "0.23.0"
 WEBUI = "0.13.0"
 AIDER = "0.86.2"
-CPU_TORCH = "2.15.0+cpu"
+CPU_TORCH = "2.8.0"  # available CPU wheels; WebUI dependency compatibility needs PAC smoke
 
 def executable(path):
     return path.is_file() and os.access(path, os.X_OK)
