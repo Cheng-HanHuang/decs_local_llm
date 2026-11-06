@@ -76,6 +76,35 @@ def make_config(port: int, model_id: str, context: int, mode: str):
         "$schema": "https://opencode.ai/config.json",
         "model": "pac/coder",
         "small_model": "pac/coder",
+        # Prevent the previously observed Qwen summary/compaction cycle.
+        # A short explicit step budget forces a text-only final turn.
+        "default_agent": "pac-read" if mode == "read" else "pac-edit",
+        "agents": {
+            "pac-read": {
+                "mode": "primary",
+                "description": "Short read-only local code review",
+                "steps": 3,
+                "system": (
+                    "You are a code reader. Read only the minimum source needed; "
+                    "then answer the user's question directly and concretely. "
+                    "Never output Objective, Decisions, Work State, Next Move, "
+                    "or compaction summaries. Do not read the same file twice "
+                    "unless the first read failed. Do not modify files."
+                ),
+            },
+            "pac-edit": {
+                "mode": "primary",
+                "description": "Explicitly approved edits in a disposable worktree",
+                "steps": 5,
+                "system": (
+                    "Work only in the current disposable Git worktree. "
+                    "Request permission before every file edit or shell command. "
+                    "Make the smallest requested change and summarize it. "
+                    "Never repeat a completed tool call without a concrete reason."
+                ),
+            },
+        },
+        "compaction": {"auto": False},
         "providers": {
             "pac": {
                 "name": "PAC local vLLM",
@@ -98,6 +127,11 @@ def make_config(port: int, model_id: str, context: int, mode: str):
             {"action": "tool.use", "resource": "shell:git push *", "effect": "deny"},
             {"action": "tool.use", "resource": "shell:sudo *", "effect": "deny"},
             {"action": "tool.use", "resource": "shell:rm *", "effect": "deny"},
+            {"action": "tool.use", "resource": "external_directory:*", "effect": "deny"},
+            *([
+                {"action": "tool.use", "resource": "shell:*", "effect": "deny"},
+                {"action": "tool.use", "resource": "edit:*", "effect": "deny"},
+            ] if mode == "read" else []),
         ],
         "update": "disable",
     }
