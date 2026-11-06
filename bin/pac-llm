@@ -520,6 +520,7 @@ def main(argv=None):
     cs.add_argument("value")
     agent = sub.add_parser("opencode", help="Launch local OpenCode V2 agent (read-only by default)")
     agent.add_argument("--mode", choices=("read", "edit"), default="read")
+    agent.add_argument("--steps", type=int, help="Max agent iterations (default: read=8, edit=16; range 2-48)")
     agent.add_argument("--preview", action="store_true", help="Print effective agent config without launching")
     setup = sub.add_parser("setup", help="Preview or explicitly install missing dependencies")
     setup.add_argument("--components", default="vllm,web,aider")
