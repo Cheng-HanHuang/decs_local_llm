@@ -102,6 +102,7 @@ def collate(batch, pad_id):
 
 def train(run_dir, steps, seed, lr, force=False):
     import torch
+    from importlib.metadata import version
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from peft import LoraConfig, TaskType, get_peft_model
 
@@ -120,7 +121,9 @@ def train(run_dir, steps, seed, lr, force=False):
     if not tok.eos_token:
         raise RuntimeError("Tokenizer has no eos token")
     model = AutoModelForCausalLM.from_pretrained(
-        MODEL_ID, torch_dtype=torch.bfloat16, trust_remote_code=False).to("cuda")
+        MODEL_ID, dtype=torch.bfloat16, trust_remote_code=False).to("cuda")
+    base_model_revision = getattr(model.config, "_commit_hash", None)
+    tokenizer_revision = getattr(tok, "init_kwargs", {}).get("_commit_hash")
     model.config.use_cache = False
     config = LoraConfig(
         r=8, lora_alpha=16, lora_dropout=0.0,
@@ -177,7 +180,9 @@ def train(run_dir, steps, seed, lr, force=False):
             if "lora_B" in name:
                 lora_b_norm_sq += sq
     receipt = {
-        "model_id": MODEL_ID, "seed": seed, "steps": steps, "lr": lr,
+        "model_id": MODEL_ID, "model_revision": base_model_revision,
+        "tokenizer_revision": tokenizer_revision,
+        "seed": seed, "steps": steps, "lr": lr,
         "rank": 8, "alpha": 16, "target_modules": ["q_proj", "v_proj"],
         "trainable_parameters": n_trainable, "total_parameters": n_total,
         "first_loss": losses[0], "last_loss": losses[-1],
@@ -187,6 +192,10 @@ def train(run_dir, steps, seed, lr, force=False):
         "max_gpu_memory_allocated_gib":
             torch.cuda.max_memory_allocated() / 1024 ** 3,
         "torch_version": torch.__version__,
+        "transformers_version": version("transformers"),
+        "peft_version": version("peft"),
+        "cuda_runtime_version": torch.version.cuda,
+        "gpu_name": torch.cuda.get_device_name(0),
     }
     (run_dir / "training_receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     print(json.dumps(receipt, indent=2))
