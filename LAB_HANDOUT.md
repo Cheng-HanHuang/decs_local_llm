@@ -6,9 +6,9 @@ WebUI, Aider, OpenCode and LoRA SFT.
 
 The two models are:
 
-- **Coding/agents/UI:** \`Qwen/Qwen3-4B-Instruct-2507\` through vLLM,
-  16k-token context, BF16, \`hermes\` parser.
-- **LoRA supervised learning:** \`Qwen/Qwen3-0.6B\` through PyTorch/PEFT,
+- **Coding/agents/UI:** `Qwen/Qwen3-4B-Instruct-2507` through vLLM,
+  16k-token context, BF16, `hermes` parser.
+- **LoRA supervised learning:** `Qwen/Qwen3-0.6B` through PyTorch/PEFT,
   then base/adapter inference through vLLM.
 
 These are intentionally separate exercises. The smaller 0.6B model is
@@ -18,7 +18,7 @@ used to demonstrate training, not as the coding-agent backend.
 
 After gaining GitHub collaborator access:
 
-\`\`\`bash
+```bash
 export ROOT="/egr/research-pac/$USER"
 cd "$ROOT"
 git clone --branch feature/pac-lab-autopilot-4b \
@@ -34,11 +34,11 @@ bash scripts/lab_install.sh logs
 
 # After "Status: complete":
 bash scripts/lab_install.sh verify
-\`\`\`
+```
 
 This setup installs per-user environments and downloads public model weights,
 then runs offline validation. **It does not start GPU jobs or training.**
-The installation is resumable; use \`bash scripts/lab_install.sh resume\`
+The installation is resumable; use `bash scripts/lab_install.sh resume`
 after diagnosing any failed stage.
 
 Next follow [WORKSHOP.md](WORKSHOP.md) in order: personal GPU/ports,
