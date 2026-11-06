@@ -22,8 +22,7 @@ import urllib.request
 
 PROFILES = {
     "coder": {
-        # Small, non-thinking workshop default. 30B remains opt-in via
-        # --model Qwen/Qwen3-Coder-30B-A3B-Instruct --tool-parser qwen3_xml.
+        # Small, non-thinking Qwen3-4B model, PAC-tested with Hermes tool calls.
         "model": "Qwen/Qwen3-4B-Instruct-2507",
         "served": "local-qwen-coder",
         "port": 8000,

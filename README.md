@@ -1,185 +1,170 @@
-# DECS Local LLM — PAC / slim launcher
+# DECS Local LLM — reproducible PAC workshop
 
-A small, **per-user, localhost-only** launcher for existing vLLM, Open WebUI, and Aider installations on MSU lab servers. No model weights, authentication tokens, or shared live environments are stored in this repo.
+A per-user, localhost-only toolkit for running a **small local language
+model** on PAC, using it from **Open WebUI**, **Aider**, and **OpenCode**,
+then learning **LoRA supervised fine-tuning** on a separate tiny model.
 
-This is a per-user service manager with an **explicit, opt-in setup command**. The default coder is now a **proposed 4B teaching model**; its live agent/tool-call behavior and the fresh-user installation path still require PAC tests. Existing validated 30B and LoRA results are preserved in the documentation.
+The tested coding/agent model is **[Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507)**,
+served through vLLM 0.23.0 with **Hermes** tool parsing. The fine-tuning
+exercise uses **[Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B)**.
+Both are downloaded into the student's own Hugging Face cache.
+Nothing in this repository includes model weights, credentials, WebUI
+history, or trained adapters.
 
-**Lab teaching: start with [LAB_HANDOUT.md](LAB_HANDOUT.md).** It separates a clean-account install, model/API smoke, Aider/OpenCode, LoRA SFT and the evidence matrix.
+## New lab member: start here
 
-## Tiny LoRA SFT experiment (GPU 2)
+The **[WORKSHOP.md](WORKSHOP.md)** guide is the main handout. It includes
+personal PAC paths, a resumable installer, GPU/port coordination, live
+verification exercises, exact sample prompts, expected results, troubleshooting
+and cleanup.
 
-See [experiments/lora_demo/README.md](experiments/lora_demo/README.md)
-for a small **Qwen3-0.6B + PEFT** fine-tuning demonstration. The experiment
-uses a frozen base, learns a rank-eight adapter with supervised cross-entropy,
-then compares base and adapter through vLLM on held-out prompts.
-
-This is a **separate opt-in experiment**, not a launcher feature.
-Two 30-step PAC LoRA training runs completed; static vLLM comparison gave
-**0/24 base vs 24/24 adapted exact matches** on a deliberately constant
-target. It does not establish general reasoning or input-dependent learning.
-No model weights, datasets, or secrets are tracked in Git.
-
-## OpenCode local agent (V2)
-
-See [OPENCODE.md](OPENCODE.md) for a per-user OpenCode 2.2.5 setup,
-read-only review, and explicit worktree-only edit tests.
-[LoRA demonstration plan](LORA_DEMO_PLAN.md) describes the next small-model
-SFT experiment; the working implementation and PAC results are recorded
-in the experiment README and PR history.
+Each student needs collaborator access to this private repository and an
+individual PAC account. Check for `git`, `python3` and `conda`
+before running the installer.
 
 ```bash
-pac-llm setup --components opencode        # preview
-pac-llm setup --components opencode --yes  # optional Node/OpenCode installation
-pac-llm opencode --preview                 # inspect model and permissions
-pac-llm opencode                           # read-only agent, default 8 steps
-pac-llm opencode --mode edit --steps 16    # approved edits in linked worktree only
-```
-
-The agent uses the existing vLLM backend and does not allocate another GPU.
-Before starting the coder, choose a GPU with adequate *current* free memory
-(`pac-llm doctor`). For controlled edits, use
-`pac-llm opencode --mode edit` **only inside a disposable linked worktree**.
-
-## New: per-user onboarding
-
-See [SETUP.md](SETUP.md) for detailed lab instructions.
-
-```bash
-pac-llm config init --gpu 1 --coder-port 18100 --reasoner-port 18101 --web-port 18180
-pac-llm config show
-pac-llm setup                              # PREVIEW only
-pac-llm setup --components vllm,web,aider --yes
-pac-llm setup --components vllm --download-coder --yes   # optional, small 4B default
-```
-
-Installation and model downloads never happen implicitly through `start` or `doctor`. Each user's passwords, environments, chats and model cache live under their own research root.
-
-## Quick start (on PAC)
-
-```bash
-export PAC_LLM_ROOT=/egr/research-pac/$USER
+export PAC_LLM_ROOT="/egr/research-pac/$USER"
 cd "$PAC_LLM_ROOT"
-git clone git@github.com:Cheng-HanHuang/decs_local_llm.git
-chmod +x "$PAC_LLM_ROOT/decs_local_llm/bin/pac-llm"
-mkdir -p "$PAC_LLM_ROOT/local_llm/bin"
-ln -s "$PAC_LLM_ROOT/decs_local_llm/bin/pac-llm" "$PAC_LLM_ROOT/local_llm/bin/pac-llm"
-export PATH="$PAC_LLM_ROOT/local_llm/bin:$PATH"
+git clone --branch feature/pac-lab-autopilot-4b \
+  git@github.com:Cheng-HanHuang/decs_local_llm.git
+cd decs_local_llm
 
-pac-llm doctor
-pac-llm status
-pac-llm start web
-pac-llm start coder --gpu 0
-pac-llm status
-pac-llm logs coder --lines 15
-```
+# Inspect before installing; nothing is modified.
+bash scripts/lab_install.sh plan
 
-For a shared installation, each person clones the repo (or uses a shared **read-only source** checkout), but runs with their own `$USER`, environments, caches and data directories. Do **not** share `$PAC_LLM_ROOT/local_llm` between users.
+# Explicitly install/download in a resumable background run.
+# This NEVER runs GPU jobs, starts model servers, or trains models.
+bash scripts/lab_install.sh start
 
-To make the command available in future login shells, add to *your own* `.bashrc`:
+# Monitoring from the same or another SSH terminal:
+bash scripts/lab_install.sh status
+bash scripts/lab_install.sh logs
+bash scripts/lab_install.sh follow  # Ctrl+C exits the log follower only
 
-```bash
-export PAC_LLM_ROOT=/egr/research-pac/$USER
-export PATH="$PAC_LLM_ROOT/local_llm/bin:$PATH"
-```
-
-If you already have a `decs_local_llm` checkout, use `git pull --ff-only` rather than cloning again. If the `pac-llm` symlink exists, inspect it before replacing it.
-
-## Everyday commands
-
-```bash
-pac-llm status                      # service PID and API readiness
-pac-llm doctor                      # paths + live GPU free VRAM
-pac-llm start web                   # CPU-only, localhost:8080
-pac-llm start coder --gpu 0         # 4B workshop coder on GPU 0, localhost:8000
-pac-llm logs coder --lines 30       # short log tail, safe with huge logs
-pac-llm aider                       # ask-only Aider, honors saved coder port; does not edit .gitignore
-pac-llm stop coder                  # only our managed process group
-pac-llm stop web
-```
-
-Model loading from NFS and first-time JIT compilation can be slow.
-`start` **returns immediately** with PID/log paths; use `status` and
-`logs`, and do not start repeatedly. The proposed 4B default uses
-`--enable-auto-tool-choice --tool-call-parser hermes`. The previous
-30B Qwen3-Coder requires `qwen3_xml`. Do not assume a different
-model works with the same parser; see [LAB_HANDOUT.md](LAB_HANDOUT.md).
-
-The separate SSH tunnel on the Windows laptop remains:
-
-```powershell
-ssh -N -L 18080:127.0.0.1:8080 huang248@pac
-```
-
-Then open `http://localhost:18080` in a browser. Replace the host alias as needed. The web interface stays bound to `127.0.0.1` on PAC; never expose it or the vLLM API publicly without an appropriate authentication/network design.
-
-## Select another model or GPU
-
-```bash
-export PAC_LLM_ROOT=/egr/research-pac/$USER
-export PAC_LLM_GPU=1
-pac-llm start coder               # equivalent to --gpu 1
-
-# Advanced: custom model (tool calling disabled unless parser provided)
-pac-llm start coder --gpu 1 --model organization/model-name --served-name my-model
-
-# Two-GPU reasoning model; much larger VRAM requirement
-pac-llm start reasoner --gpus 0,1  # advanced two-GPU profile, localhost:8001
-```
-
-Available environment overrides:
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `PAC_LLM_ROOT` | auto-detect `/egr/research-pac/$USER` or slim | per-user research root |
-| `PAC_LLM_BASE` | `$PAC_LLM_ROOT/local_llm` | caches, logs, run files, web UI data |
-| `PAC_LLM_VLLM_ENV` | `$PAC_LLM_ROOT/conda-envs/local-agent` | vLLM + Ninja environment |
-| `PAC_LLM_WEBUI_ENV` | `$PAC_LLM_ROOT/conda-envs/open-webui` | separate Open WebUI environment |
-| `PAC_LLM_GPU` | unset | default one-GPU selection |
-| `PAC_LLM_GPUS` | unset | default multi-GPU selection, e.g. `0,1` |
-| `PAC_LLM_MODEL` | per-profile model | model override (prefer `--model`) |
-| `PAC_LLM_OFFLINE` | `1` | set to `0` to permit Hugging Face downloads |
-| `PAC_LLM_CODER_PORT` | `8000` | vLLM coding API port |
-| `PAC_LLM_REASONER_PORT` | `8001` | vLLM reasoning API port |
-| `PAC_LLM_WEB_PORT` | `8080` | Open WebUI port |
-
-The proposed workshop coder is `Qwen/Qwen3-4B-Instruct-2507`, BF16,
-16k context, `hermes` parser, 0.16 GPU memory utilization.
-The earlier validated large coder remains available explicitly:
-
-```bash
-pac-llm start coder --gpu 2 \
-  --model Qwen/Qwen3-Coder-30B-A3B-Instruct \
-  --served-name local-qwen-coder \
-  --tool-parser qwen3_xml --memory-util 0.68 --max-model-len 16384
-```
-
-Do not start this large profile during a multi-user introductory workshop
-unless GPU capacity has been coordinated. The old parser is not appropriate
-for the new 4B model. The default reasoner is `Qwen/Qwen3-Next-80B-A3B-Thinking`, BF16, tensor parallel 2, 16k context, 0.88 memory utilization. These are **starting configurations**, not guarantees that a GPU has enough free memory. Custom models may need different dtype, context, or tool parser; the launcher currently uses BF16.
-
-## Co-tenancy and safety
-
-- **No waiting for idle GPUs**: explicitly choose GPU(s). The launcher reports utilization but does not reject high utilization by itself.
-- It does a conservative *snapshot* of free VRAM: each GPU needs `GPU total × gpu-memory-utilization + 2 GiB`. If it fails, choose other GPUs or use `--force` knowing the risks. VRAM can change immediately after inspection; no check can guarantee co-tenancy safety.
-- The launcher refuses to claim an occupied API port, even if the process was started manually. It does not kill unmanaged processes.
-- Run metadata is per host and per user; before signaling a process group, it validates PID, Linux process starttime, owner, and process-group leader. `stop --force` is for a **verified managed** group only.
-- All logs and WebUI credentials stay under the research root, never in Git. WebUI accounts and chats persist under `$PAC_LLM_BASE/webui/data`. The launcher reuses the existing secret key and data directory.
-- `pac-llm aider` launches uv or Conda Aider in ask-only mode, honors the configured coder port, disables Aider's automatic `.gitignore` update, and preserves a real global `~/.gitconfig` if present. The old `run_aider_local.sh` remains unchanged for manual use. For exact code explanations, enter `/read-only bin/pac-llm bin/pac_llm_bootstrap.py` in Aider; a repository map alone supplies only summaries.
-- If you started vLLM/Open WebUI manually before adopting this launcher, shut them down by their **original terminal or known PID**. The launcher will report the port as unmanaged and refuse to kill it.
-- Open WebUI's RAG/embedding setup is independent of chat inference; an expired Hugging Face token may break document retrieval without preventing chat. The launcher disables implicit Hugging Face tokens only in the WebUI process.
-- Enabling auto-tool-choice lets models request tools. Review Open WebUI workspace tools/skills permissions and verify claimed actions; a model saying “I created a skill” is not evidence it actually did.
-
-## Test locally without GPUs
-
-```bash
+# Once complete:
+bash scripts/lab_install.sh verify
 python3 -m unittest discover -s tests -v
 ```
 
-Tests use fake `nvidia-smi` and fake HTTP serving scripts, so they never load a model.
+If setup stops at a stage, inspect
+`$PAC_LLM_ROOT/local_llm/lab_autopilot/stages/<stage>.log`
+and rerun `bash scripts/lab_install.sh resume`. Successful stages
+are recorded under `lab_autopilot/status.json`. Do not start multiple
+installers for the same account.
 
-## Known limits
+**Important:** Although the model/agents and LoRA experiment passed
+on one PAC account, a completely new account and multi-user co-tenancy
+are still in validation. This handout is designed to collect that evidence,
+not to pretend untested installations already worked.
 
-- Explicit `setup --yes` installs missing executables but does not update existing environments or fully lock dependencies. Model downloads must be requested separately.
-- On a fresh installation without `env_local_agent.sh`, it sets a minimal subset of cache locations; review other XDG/HF caches before downloading models.
-- If two profiles are started, Open WebUI's current single backend points at coder. Add reasoning API at `http://127.0.0.1:8001/v1` in **Admin → Settings → Connections** as needed.
-- Process-state management is Linux-specific (`/proc`), and service metadata is per machine. Shared NFS storage does not mean a localhost service is reachable on another host.
+## What is included?
+
+| Component | Model / tooling | Purpose |
+| --- | --- | --- |
+| vLLM | Qwen3-4B-Instruct-2507, BF16, Hermes | Small local chat and tool API |
+| Open WebUI | Separate CPU environment | Browser chat through an SSH tunnel |
+| Aider | Separate per-user CLI | Ask-only source reading |
+| OpenCode | Node.js + isolated CLI/state | Read-only agent and approved worktree edits |
+| LoRA SFT | Qwen3-0.6B, PyTorch + PEFT | Train an adapter, compare base and adapted |
+| Installer | `scripts/lab_install.sh` | Resume package/model downloads |
+| Offline verifier | `scripts/lab_verify.py` | Inspect files, model cache and tokenizer |
+| Live tool smoke | `scripts/pac_workshop_smoke.py` | Verify actual structured tool calls |
+| Receipt | `scripts/record_pac_environment.py` | Save non-secret environment fingerprint |
+
+## Personal runtime paths
+
+```text
+/egr/research-pac/$USER/
+├── decs_local_llm/                 # Git checkout (code/docs)
+├── conda-envs/
+│   ├── local-agent/                # vLLM 0.23.0 + Ninja
+│   ├── open-webui/                 # Open WebUI
+│   ├── aider/                      # Aider, unless existing uv executable
+│   ├── opencode-node/              # Node.js/npm
+│   └── lora-demo/                  # separate PyTorch/PEFT SFT env
+└── local_llm/
+    ├── bin/pac-llm                 # symlink to Git checkout
+    ├── config/pac-llm.json         # personal GPU and ports
+    ├── hf_cache/                   # downloaded model weights
+    ├── lab_autopilot/              # status + stage logs
+    ├── opencode/                   # client state and worktrees
+    ├── webui/                      # personal chat/account data
+    └── lora-demo/runs/             # datasets, adapters, training receipts
+```
+
+**Each student gets unique ports on the same PAC host.** Per-user file
+paths do not imply port isolation. GPU memory is shared as well.
+Coordinate resources and follow PAC rules. The 4B vLLM profile uses a
+starting `--gpu-memory-utilization 0.16` and 16,384-token context.
+On the tested 96 GiB GPU, model weights occupied 7.64 GiB and its KV
+cache had 6.59 GiB available. These are observations for one run, not a
+multi-user safety guarantee.
+
+## Common commands (after installation)
+
+In **each fresh SSH terminal**:
+
+```bash
+export ROOT="/egr/research-pac/$USER"
+export PATH="$ROOT/local_llm/bin:$PATH"
+```
+
+Choose unique ports and an assigned GPU following WORKSHOP.md:
+
+```bash
+pac-llm config init --gpu 2 --coder-port 18501 \
+  --reasoner-port 18502 --web-port 19501
+pac-llm config show
+pac-llm doctor
+
+pac-llm start coder                  # Qwen3-4B, uses saved GPU/port
+pac-llm status                       # wait for coder API ready
+pac-llm logs coder --lines 30
+
+python3 "$ROOT/decs_local_llm/scripts/pac_workshop_smoke.py" \
+  --port 18501 --model local-qwen-coder --test-tools
+
+pac-llm start web                    # browser chat, private data
+pac-llm aider                        # ask-only source reading
+pac-llm opencode --preview
+pac-llm opencode --steps 8           # read-only agent
+```
+
+For guarded edits, create a **linked worktree** beneath
+`$ROOT/local_llm/opencode/worktrees/` and use
+`pac-llm opencode --mode edit --steps 16`. Review every diff and run
+tests yourself. The permission layer is not a security sandbox.
+
+The LoRA demo is separate: see
+[experiments/lora_demo/README.md](experiments/lora_demo/README.md) and
+WORKSHOP.md §§9–10. LoRA uses **Qwen3-0.6B**, rank eight on
+`q_proj,v_proj` and 30 optimizer steps. Our one-account PAC result
+was 0/24 exact matches with the base and 24/24 with LoRA on the synthetic,
+constant-target `PAC-ACK` task. This shows the adapter learned a
+response convention, **not** nontrivial reasoning or input-dependent mapping.
+
+## Design and safety
+
+- Setup is opt-in. `plan`, `status`, `doctor`, and CPU unit tests
+  do not install packages or allocate GPU memory.
+- Installer and service manager use per-user research storage. The setup
+  process is resumable and serialized with a user-local file lock.
+- Downloads for public Hugging Face models disable implicit authentication
+  to avoid cached invalid OAuth tokens; no saved credentials are deleted.
+- vLLM/WebUI bind to `127.0.0.1`. On a shared host, localhost **is
+  not authentication** against other accounts. Use synthetic inputs.
+- The launcher checks process identity before stopping managed services,
+  refuses occupied ports and requires a GPU-memory snapshot. It cannot
+  reserve VRAM against co-tenants.
+- OpenCode read mode denies writes; edit mode requires an explicit linked
+  worktree and approval. Neither is an OS-level sandbox.
+- The exact dependency pins are installation targets, **not a fully
+  locked transitive dependency environment**. Record the actual source
+  revision and package versions for scientific reproducibility.
+- The optional large reasoning profile is not needed or downloaded for
+  this workshop.
+
+More references: [SETUP.md](SETUP.md),
+[OPENCODE.md](OPENCODE.md),
+[LAB_HANDOUT.md](LAB_HANDOUT.md), and
+[LoRA experiment](experiments/lora_demo/README.md).

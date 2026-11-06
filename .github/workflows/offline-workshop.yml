@@ -1,0 +1,24 @@
+name: Offline workshop checks
+on:
+  pull_request:
+  push:
+    branches:
+      - feature/pac-lab-autopilot-4b
+  workflow_dispatch:
+
+jobs:
+  no-gpu-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Python syntax check
+        run: |
+          python -m py_compile scripts/lab_autopilot.py scripts/lab_verify.py scripts/pac_workshop_smoke.py scripts/record_pac_environment.py experiments/lora_demo/demo.py bin/pac-llm bin/pac_llm_bootstrap.py
+      - name: Shell syntax check
+        run: bash -n scripts/lab_install.sh
+      - name: Offline CPU tests
+        run: python -m unittest discover -s tests -v

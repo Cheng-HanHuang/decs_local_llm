@@ -14,7 +14,7 @@ Show, on a single shared PAC GPU, the difference among:
    folded into the base parameters for inference.
 
 Use **Qwen/Qwen3-0.6B** (small, Apache-2.0 licensed) so the demonstration is
-cheap. The 30B coder is for the agent evaluation, **not** the SFT example.
+cheap. The 4B workshop coder is for chat/agents, **not** the 0.6B SFT example.
 
 ## Mathematical picture
 
@@ -58,7 +58,7 @@ and benchmarking, not to train model weights**.
 ## GPU policy
 
 Run the demo on **GPU 2**, after checking contemporaneous free VRAM.
-Stop the large coder model first to avoid needless co-tenancy:
+Stop your running 4B coder service first if you need the same GPU for SFT:
 
 ```bash
 pac-llm stop coder

@@ -78,6 +78,29 @@ class SetupConfigTests(unittest.TestCase):
         self.assertIn("--no-show-model-warnings", r.stdout)
         self.assertIn(str(self.root / "local_llm/aider_home"), r.stdout)
 
+    def test_partial_webui_env_gets_missing_cpu_torch(self):
+        # Interrupted installs can leave Python but not torch or WebUI.
+        env = self.root / "conda-envs/open-webui"
+        (env / "bin").mkdir(parents=True)
+        (env / "conda-meta").mkdir()
+        python = env / "bin/python"
+        python.write_text("#!/bin/sh\\nexit 1\\n".replace("\\n", "\n"))
+        python.chmod(0o755)
+        result = self.cmd("setup", "--components", "web")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Install CPU PyTorch", result.stdout)
+        self.assertIn("Install pinned Open WebUI", result.stdout)
+        self.assertNotIn("Create/resume WebUI environment", result.stdout)
+
+    def test_partial_vllm_env_uses_conda_install_not_create(self):
+        env = self.root / "conda-envs/local-agent"
+        (env / "conda-meta").mkdir(parents=True)
+        result = self.cmd("setup", "--components", "vllm")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Create/resume vLLM environment", result.stdout)
+        self.assertIn("install -p", result.stdout)
+        self.assertNotIn("create -p", result.stdout)
+
     def test_config_init_does_not_overwrite(self):
         self.assertEqual(self.cmd("config", "init").returncode, 0)
         self.assertNotEqual(self.cmd("config", "init").returncode, 0)
