@@ -2,7 +2,9 @@
 
 This repo contains **code and documentation only**. Each lab member owns a separate installation and model cache.
 
-For a **full teaching handout with validated/not-yet-validated checkpoints**, use [LAB_HANDOUT.md](LAB_HANDOUT.md). The candidate workshop default is **Qwen3-4B-Instruct-2507**, not the earlier large Qwen3-Coder.
+For the **complete current student walkthrough and automated installer**, follow
+[WORKSHOP.md](WORKSHOP.md). The live-tested teaching model is
+**Qwen3-4B-Instruct-2507** (Hermes parser).
 
 ## Configuration scopes
 
@@ -21,7 +23,7 @@ For a **full teaching handout with validated/not-yet-validated checkpoints**, us
 ```bash
 export PAC_LLM_ROOT=/egr/research-pac/$USER
 cd "$PAC_LLM_ROOT"
-git clone --branch feature/pac-lab-reproducibility \
+git clone --branch feature/pac-lab-autopilot-4b \
   git@github.com:Cheng-HanHuang/decs_local_llm.git
 mkdir -p "$PAC_LLM_ROOT/local_llm/bin"
 ln -s "$PAC_LLM_ROOT/decs_local_llm/bin/pac-llm" "$PAC_LLM_ROOT/local_llm/bin/pac-llm"
@@ -43,41 +45,49 @@ pac-llm config set coder_port 18102
 
 Ports are illustrative and not reserved. The launcher checks port availability when starting.
 
-## 3. Explicit installation
+## 3. Automated installation (recommended for lab members)
+
+From the repository checkout:
 
 ```bash
-pac-llm setup                                   # preview only
-pac-llm setup --components vllm,web,aider --yes  # opt-in installation
-pac-llm doctor
+bash scripts/lab_install.sh plan
+bash scripts/lab_install.sh start
+bash scripts/lab_install.sh status
+bash scripts/lab_install.sh logs
+bash scripts/lab_install.sh verify    # after Status: complete
 ```
+
+This installs vLLM, Open WebUI, Aider, OpenCode, LoRA/PEFT and both
+public Qwen3 models; it prepares training data. It runs CPU tests,
+keeps per-stage logs and resumes after interruption. It does not start
+GPU jobs or train. See [WORKSHOP.md](WORKSHOP.md).
+
+**Manual option:** `pac-llm setup` previews individual components,
+and `pac-llm setup --components vllm,web,aider,opencode --yes`
+installs them explicitly. The manual option does not create the LoRA
+training environment or download both models.
 
 `setup` checks for missing executables and preserves existing environments and the existing Aider wrapper. It captures large package logs to `$PAC_LLM_BASE/logs/<hostname>/setup.log`. Conda must be available in your shell.
 
 The initial pinned candidates are vLLM 0.23.0 with Python 3.11 plus
 Ninja, Open WebUI 0.13.0 with Python 3.12 plus **torch 2.8.0 CPU**,
-Aider 0.86.2, OpenCode 2.2.5 and Node 22. The previous
-`torch==2.15.0+cpu` installer pin was invalid and has been replaced.
-**Full fresh-user installation has not been validated**, especially the
+Aider 0.86.2, OpenCode 2.2.5 and Node 22. **Full fresh-user installation has not been validated**, especially the
 WebUI dependency resolution. Other CUDA drivers may require adaptation.
 This is not a fully locked environment.
 
-Model weights are **not** downloaded by default. The workshop coder is
-a smaller 4B model; the optional advanced reasoner can be much larger:
-
-```bash
-pac-llm setup --components vllm --download-coder --yes
-# or
-pac-llm setup --components vllm --download-reasoner --yes
-```
-
-Use `hf auth login` under your own account if accessing gated models. Never commit tokens, weights or chats.
+Model weights are **not** downloaded by ordinary `pac-llm setup`
+unless requested; the lab autopilot explicitly downloads the two
+public models. To download just the workshop coder manually, use
+`pac-llm setup --components vllm --download-coder --yes`.
+The autopilot disables implicit Hugging Face credentials for public
+downloads. Never commit tokens, weights or chats.
 
 ## 4. Everyday use
 
 ```bash
 pac-llm status
 pac-llm start web
-pac-llm start coder                   # proposed 4B default; uses saved GPU, port
+pac-llm start coder                   # tested 4B default; uses saved GPU, port
 pac-llm start coder --gpu 3           # temporary override
 pac-llm logs coder --lines 20
 pac-llm aider                         # ask-mode Aider
@@ -99,11 +109,9 @@ Visit http://localhost:19080 in the laptop browser.
 - An occupied port is reported as `unmanaged port` unless the launcher owns the process. It never kills unrelated services.
 - `setup` only installs *missing executables*; it does not upgrade or overwrite environments. Setup can require significant disk space. Test compatibility before wide lab rollout.
 - `pac-llm aider` calls the per-user uv or Conda Aider binary directly, uses the configured coder port, and defaults to ask-only mode. The old June wrapper is preserved for manual usage, but it still hardcodes port 8000; prefer `pac-llm aider` for custom ports.
-- The proposed 4B default uses `hermes` for structured tool calls;
-the previous Qwen3-Coder-30B needs `qwen3_xml`. A **plain chat response
-does not prove that tool calling works**. First run the
-`scripts/pac_workshop_smoke.py --test-tools` gate from the lab handout.
-Keep the original 30B model available with explicit
-`--model ... --tool-parser qwen3_xml` options; it is not auto-selected
-just because someone changes `PAC_LLM_MODEL` or a saved `model` key.
+- The 4B default uses `hermes` for structured tool calls, tested live
+  on PAC. A plain chat response is not a tool-calling test; run
+  `scripts/pac_workshop_smoke.py --test-tools`.
+- Existing per-user settings override defaults. Check `pac-llm config show`
+  before a workshop; do not reuse other people's ports.
 - Inference is offline by default once model weights are cached. RAG embeddings/downloads are separate from inference.
