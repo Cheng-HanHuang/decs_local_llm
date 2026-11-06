@@ -24,18 +24,22 @@ state stay in personal research storage, not the home directory or this repo.
 ```bash
 pac-llm config set gpu 2              # example personal choice
 pac-llm doctor                        # check current free VRAM and co-tenancy
-pac-llm start coder --gpu 2 --memory-util 0.68 --max-model-len 8192
+pac-llm start coder --gpu 2 --memory-util 0.16 --max-model-len 16384
 pac-llm status
 ```
 
-These memory values are examples for an existing 96 GiB GPU with other jobs.
-Always use current `pac-llm doctor` output rather than assuming capacity.
-vLLM may still run out of memory if concurrent GPU jobs grow.
+This is the proposed **Qwen3-4B-Instruct-2507** workshop profile,
+not the earlier validated 30B Coder profile. The 4B model is much
+smaller, but **local OpenCode tool use remains untested with it**.
+Always use current `pac-llm doctor` and coordinate GPU allocations.
+vLLM may still run out of memory if other GPU workloads grow.
 
-The vLLM server needs `--enable-auto-tool-choice --tool-call-parser qwen3_xml`
-for the default Qwen3-Coder model, already enabled by the launcher.
-Custom models need compatible tool parser configuration. The agent may not
-function correctly with models that do not follow tool-call conventions.
+The 4B default uses `--enable-auto-tool-choice --tool-call-parser hermes`,
+consistent with the Qwen3 Hermes-style chat template. The previously
+validated Qwen3-Coder-30B uses `qwen3_xml` instead. **Do not assume a
+small model's tool calling works just because its chat works.** Run
+`python3 scripts/pac_workshop_smoke.py --port <your-coder-port> --test-tools`
+before agent exercises. See [LAB_HANDOUT.md](LAB_HANDOUT.md).
 
 ## 3. Read-only first
 
@@ -68,7 +72,8 @@ To exit, use OpenCode's exit action or Ctrl+C. The vLLM server remains running.
 
 ## If OpenCode repeatedly summarizes or rereads the same file
 
-During a PAC trial with Qwen3-Coder and vLLM, the model repeatedly emitted
+During a PAC trial with the **earlier Qwen3-Coder-30B** and vLLM,
+the model repeatedly emitted
 `Objective / Decisions / Work State / Next Move` summaries, reread the same
 file, and entered automatic compaction without answering. This is **not**
 normal task completion. Interrupt it with Esc. A similar model/provider issue
@@ -97,8 +102,10 @@ GPU job unless you have adequate free memory and permission to do so.
 Diagnostic test: in a *new* session ask, `Read bin/pac-llm and identify only
 the exact Python function implementing start. Reply in one sentence.`
 If the model loops again, use `pac-llm aider` for repo reading and record
-that OpenCode + local Qwen needs further compatibility work; do not attempt
-unbounded edit automation.
+that OpenCode + the chosen model needs further compatibility work; do not
+attempt unbounded edit automation. A smaller model will usually require
+**more** explicit filenames and prompts, not fewer. Existing 30B read/edit
+success is not evidence that the new 4B model can perform the same task.
 
 ## 4. Controlled editing in a disposable Git worktree
 
