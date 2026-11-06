@@ -47,8 +47,11 @@ def setup_steps(w, components, downloads):
     if "opencode" in components:
         node_env = w.root / "conda-envs/opencode-node"
         if not executable(node_env / "bin/node") or not executable(node_env / "bin/npm"):
+            # Resume a partially created environment rather than failing
+            # with "prefix already exists" on subsequent setup attempts.
+            operation = "install" if (node_env / "conda-meta").is_dir() else "create"
             steps.append(("Install per-user Node.js 22 and npm",
-                          [conda, "create", "-p", str(node_env), "-c", "conda-forge",
+                          [conda, operation, "-p", str(node_env), "-c", "conda-forge",
                            "nodejs=22", "-y"]))
         if not executable(w.base / "opencode/npm/bin/opencode"):
             steps.append(("Install OpenCode V2",
