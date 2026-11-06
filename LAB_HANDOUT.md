@@ -144,11 +144,39 @@ WebUI 0.13.0; Aider 0.86.2; OpenCode 2.2.5; Node 22. The WebUI CPU
 PyTorch pin was corrected to 2.8.0, but full fresh-user dependency
 compatibility is **not yet validated**.
 
-Download only the small workshop model:
+Download only the small workshop model. **Qwen3-4B-Instruct-2507
+is public**. On a machine with old Hugging Face credentials, an
+implicitly attached invalid token can cause HTTP 401, including
+`OAuth token signature verification failed`. Try an anonymous request
+without modifying saved credentials:
+
+```bash
+ROOT=/egr/research-pac/$USER
+BASE="$ROOT/local_llm"
+export HF_HOME="$BASE/hf_cache"
+export HF_HUB_CACHE="$BASE/hf_cache/hub"
+export HF_HUB_OFFLINE=0
+export HF_HUB_DISABLE_IMPLICIT_TOKEN=1
+unset HF_TOKEN HUGGING_FACE_HUB_TOKEN
+"$ROOT/conda-envs/local-agent/bin/hf" download Qwen/Qwen3-4B-Instruct-2507
+export HF_HUB_OFFLINE=1
+```
+
+If the existing vLLM environment lacks `hf` but the LoRA
+environment has it, the latter can download into the same `HF_HOME`.
+On fresh accounts, first `pac-llm setup --components vllm --yes` (and
+preview its actions) to install the vLLM environment.
+
+Alternatively, the launcher supports an explicit download:
 
 ```bash
 pac-llm setup --components vllm --download-coder --yes
 ```
+
+The public-model anonymous method is preferred when cached credentials
+are invalid. If a 401 persists despite disabling implicit tokens,
+record the HTTP error (not the token), check proxy/HF endpoint settings,
+and verify availability from the public model page.
 
 It uses the per-user Hugging Face cache. Downloading weights is an
 explicit opt-in and may require substantial disk space. No login token
@@ -403,6 +431,7 @@ These commands intentionally refuse to kill unmanaged ports/processes.
 | Context overflow | Increase 8k to 16k **only if VRAM allows**; avoid massive read prompts |
 | GPU headroom check fails | Choose another assigned GPU, smaller model or lower concurrency; don't bypass blindly |
 | WebUI shows “No models yet” in Workspace | Check Chat model selector and backend API connection |
+| Public HF model download says `401` / OAuth signature invalid | Disable implicit token and unset shell tokens; keep the saved token untouched |
 | Fresh-user setup fails | Keep log, package versions and OS/driver information; document as unresolved |
 
 ## 10. What is actually validated?
