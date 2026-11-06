@@ -28,6 +28,8 @@ class SetupConfigTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Preview only", result.stdout)
         self.assertIn("Download model", result.stdout)
+        self.assertIn("Qwen/Qwen3-4B-Instruct-2507", result.stdout)
+        self.assertNotIn("Qwen3-Coder-30B-A3B-Instruct", result.stdout)
         self.assertFalse((self.root / "conda-envs").exists())
 
     def test_setup_rejects_invalid_component(self):
