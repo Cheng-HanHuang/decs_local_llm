@@ -259,6 +259,26 @@ If `pac-llm: command not found`, run the four lines above or invoke
 **Replace** the example values with the ones assigned by the coordinator.
 Never use the same API ports as another student on the same host.
 
+**How port assignment works:** All students on the same PAC host share one
+network port space even though their file paths and Conda environments are
+private. Assign each student a distinct *set* of port numbers (including the
+later LoRA evaluation port), not necessarily permanently reserved ports.
+Only **actively listening** services cause conflicts, but using distinct sets
+prevents surprises. For example:
+
+| Purpose | Student A | Student B | Notes |
+| --- | ---: | ---: | --- |
+| Qwen3-4B coder API | 18501 | 18601 | Used by WebUI, Aider and OpenCode |
+| WebUI | 19501 | 19601 | Browser UI, separate process |
+| Optional reasoner | 18502 | 18602 | Saved but **not started** in workshop |
+| Qwen3-0.6B LoRA evaluation | 18550 | 18650 | Not in saved config; explicit vLLM flag |
+
+Aider and OpenCode share the running coder API; **they do not launch
+their own models or require separate ports**. Your laptop SSH tunnel's
+*local* port (such as `19080`) is independent of these PAC ports.
+Port assignment does not reserve GPU memory; coordinate GPUs separately.
+`pac-llm start` refuses a port already occupied on `127.0.0.1`.
+
 ```bash
 GPU=2
 CODER_PORT=18501
@@ -556,6 +576,82 @@ PY
 ```
 
 Stop the separate inference server with Ctrl+C in **terminal A**.
+
+## Optional: load a different Hugging Face model later
+
+**The two workshop downloads are not automatically launched together.**
+`pac-llm start coder` serves **only Qwen3-4B** by default. The
+`Qwen3-0.6B` model is separately loaded for the LoRA training/evaluation
+exercises in sections 9–10. Downloaded weights take disk space but no GPU
+memory until loaded by a process.
+
+The launcher supports **any compatible Hugging Face model ID** through
+`--model`; it does not automatically fetch model weights in the normal
+offline `coder` configuration. For a new public model:
+
+```bash
+export ROOT="/egr/research-pac/$USER"
+export BASE="$ROOT/local_llm"
+export REPO="$BASE/lab-rehearsal/source"  # existing-account rehearsal
+# On a new account, use REPO="$ROOT/decs_local_llm" instead.
+export PATH="$REPO/bin:$BASE/bin:$PATH"
+export HF_HOME="$BASE/hf_cache"
+export HF_HUB_CACHE="$BASE/hf_cache/hub"
+export HF_HUB_OFFLINE=0
+export HF_HUB_DISABLE_IMPLICIT_TOKEN=1
+unset HF_TOKEN HUGGING_FACE_HUB_TOKEN
+
+# Example: the previously tested *optional* larger coder.
+"$ROOT/conda-envs/local-agent/bin/hf" download \
+  Qwen/Qwen3-Coder-30B-A3B-Instruct
+
+# Restore offline operation once files are present.
+export HF_HUB_OFFLINE=1
+```
+
+A later `pac-llm start coder --model ...` uses this local cache.
+**Stop only your own existing managed coder process first**, and confirm
+GPU free memory before switching models. The optional 30B model requires
+far more GPU VRAM; do not try it during a congested multi-student workshop.
+
+```bash
+pac-llm status
+pac-llm stop coder   # only if your account's managed coder is running
+
+nvidia-smi -i "$GPU" --query-gpu=memory.total,memory.used,memory.free \
+  --format=csv
+
+pac-llm start coder --gpu "$GPU" \
+  --model Qwen/Qwen3-Coder-30B-A3B-Instruct \
+  --served-name local-qwen-coder \
+  --tool-parser qwen3_xml \
+  --memory-util 0.68 \
+  --max-model-len 16384
+
+pac-llm status
+pac-llm logs coder --lines 40
+```
+
+These are **advanced example settings from our previous experiment**,
+not a guarantee that the larger model will fit under current GPU
+co-tenancy. If memory is insufficient, do not use `--force` simply to
+override the check. `--served-name local-qwen-coder` preserves the API
+name expected by the Aider wrapper and workshop clients; it does *not*
+mean the underlying checkpoint is still 4B. Check `/v1/models`'s
+`root` field to confirm which weights are loaded.
+
+For other models, check the model's license, architecture support,
+chat template, tool-call parser, GPU memory needs and context limits.
+A custom `--model` **does not automatically select its corresponding
+tool parser or increase the 4B profile's 0.16 GPU memory budget**. Set
+`--tool-parser`, `--memory-util`, `--max-model-len` and
+`--served-name` explicitly as appropriate, and run a fresh chat/tool
+smoke test. Some models support chat but not structured tool calling.
+
+The manual model-override workflow is **optional**. All mandatory
+workshop exercises continue to use the verified 4B coder.
+
+---
 
 ## 11. Save evidence and clean up
 
