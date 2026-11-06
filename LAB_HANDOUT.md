@@ -316,9 +316,17 @@ command -v ninja || exit 1
   --lora-modules "toy-lora=$RUN/adapter"
 ```
 
-Then, in another terminal with **the same** `RUN` and `EVAL_PORT`:
+Then, in another terminal, **set the variables again** to the same
+run name and port (shell variables do not propagate between terminals):
 
 ```bash
+ROOT=/egr/research-pac/$USER
+BASE="$ROOT/local_llm"
+ENV="$ROOT/conda-envs/lora-demo"
+REPO="$ROOT/decs_local_llm"
+RUN="$BASE/lora-demo/runs/<your-run-name>"
+EVAL_PORT=18550  # the same port you chose for the server
+
 "$ENV/bin/python" "$REPO/experiments/lora_demo/demo.py" \
   evaluate --run-dir "$RUN" --port "$EVAL_PORT"
 cat "$RUN/evaluation_summary.json"
@@ -335,7 +343,19 @@ software. A separate plain `vllm serve` is not tracked by
 
 ## 8. Completion evidence and cleanup
 
-Each member records a small run receipt:
+Each member records a small run receipt. The following script is
+**read-only** except for creating its one requested output file (it
+refuses to overwrite an existing receipt):
+
+```bash
+ROOT=/egr/research-pac/$USER
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+python3 "$ROOT/decs_local_llm/scripts/record_pac_environment.py" \
+  --root "$ROOT" --repo "$ROOT/decs_local_llm" \
+  --out "$ROOT/local_llm/lab_receipts/workshop-$STAMP.json"
+```
+
+Include these measurements and outcomes with that receipt:
 
 - Host and date; source `git rev-parse HEAD`.
 - Assigned GPU and distinct ports, actual `nvidia-smi` free VRAM.
