@@ -96,16 +96,16 @@ class LauncherTests(unittest.TestCase):
         done=self.run_cli('stop','coder')
         self.assertEqual(done.returncode,0,done.stderr)
 
-    def test_custom_small_model_override(self):
+    def test_custom_model_override_is_parser_opt_in(self):
         p = self.run_cli('start', 'coder', '--gpu', '0',
-                         '--model', 'Qwen/Qwen3-0.6B',
+                         '--model', 'example/test-model',
                          '--served-name', 'small-base',
                          '--memory-util', '0.12',
                          '--max-model-len', '2048')
         self.assertEqual(p.returncode, 0, p.stderr)
         state = list((self.base / 'run').glob('*/coder.json'))
         data = json.loads(state[0].read_text())
-        self.assertEqual(data['model'], 'Qwen/Qwen3-0.6B')
+        self.assertEqual(data['model'], 'example/test-model')
         self.assertEqual(data['tool_parser'], None)
         self.assertEqual(data['memory_util'], 0.12)
         self.assertEqual(data['max_model_len'], 2048)
