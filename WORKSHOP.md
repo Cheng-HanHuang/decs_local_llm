@@ -46,6 +46,40 @@ If `conda` is absent, activate the PAC-supported Conda installation first.
 Do not use `sudo` or modify someone else's environment. A `conda` failure
 is a prerequisite failure; rerunning the installer will not solve it.
 
+### Private GitHub access preflight (before cloning)
+
+This repository is **private**. The coordinator must invite each student
+through GitHub repository **Settings → Collaborators → Add people**. The
+student must accept the invitation on **their own GitHub account**.
+Receiving a URL or PR link alone does not grant access.
+
+First, open `https://github.com/Cheng-HanHuang/decs_local_llm` in a
+browser logged into the invited account. If GitHub shows a 404 or
+permission error, confirm the username and accepted invitation with the
+coordinator before troubleshooting PAC.
+
+On **PAC**, verify that the SSH key maps to that same GitHub account:
+
+```bash
+ssh -T git@github.com
+# Expected: "Hi YOUR_GITHUB_USERNAME! You've successfully authenticated..."
+# GitHub may return shell exit status 1 even on successful authentication.
+
+git ls-remote git@github.com:Cheng-HanHuang/decs_local_llm.git HEAD
+```
+
+If SSH says `Permission denied (publickey)`, the student needs to
+register *their own* PAC SSH public key in GitHub → Settings → SSH and GPG
+keys. Do not copy another person's private key. If SSH identifies the
+wrong GitHub account, correct the key/account mapping. If SSH succeeds
+but `git ls-remote` says repository not found, check invitation status
+and repository permissions first.
+
+An alternative is an authenticated HTTPS clone through `gh auth login`
+(on an account with GitHub CLI installed) and `gh repo clone`, or a
+personal HTTPS token configured through a credential helper; GitHub
+password authentication for HTTPS Git is not supported.
+
 ## 1. Clone the workshop branch
 
 The coordinator grants GitHub collaborator access first. Configure GitHub SSH
