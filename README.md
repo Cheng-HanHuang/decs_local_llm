@@ -2,7 +2,9 @@
 
 A small, **per-user, localhost-only** launcher for existing vLLM, Open WebUI, and Aider installations on MSU lab servers. No model weights, authentication tokens, or shared live environments are stored in this repo.
 
-This is a per-user service manager with an **explicit, opt-in setup command**. Existing vLLM/Open WebUI service operation has been validated on PAC; the new installation path still needs a first-time lab-member test.
+This is a per-user service manager with an **explicit, opt-in setup command**. The default coder is now a **proposed 4B teaching model**; its live agent/tool-call behavior and the fresh-user installation path still require PAC tests. Existing validated 30B and LoRA results are preserved in the documentation.
+
+**Lab teaching: start with [LAB_HANDOUT.md](LAB_HANDOUT.md).** It separates a clean-account install, model/API smoke, Aider/OpenCode, LoRA SFT and the evidence matrix.
 
 ## Tiny LoRA SFT experiment (GPU 2)
 
@@ -11,16 +13,19 @@ for a small **Qwen3-0.6B + PEFT** fine-tuning demonstration. The experiment
 uses a frozen base, learns a rank-eight adapter with supervised cross-entropy,
 then compares base and adapter through vLLM on held-out prompts.
 
-This is a **separate opt-in experiment**, not a launcher feature and not a
-completed training run. No model weights, datasets, or secrets are tracked
-in Git. Do not change or reinstall the working vLLM environment.
+This is a **separate opt-in experiment**, not a launcher feature.
+Two 30-step PAC LoRA training runs completed; static vLLM comparison gave
+**0/24 base vs 24/24 adapted exact matches** on a deliberately constant
+target. It does not establish general reasoning or input-dependent learning.
+No model weights, datasets, or secrets are tracked in Git.
 
 ## OpenCode local agent (V2)
 
 See [OPENCODE.md](OPENCODE.md) for a per-user OpenCode 2.2.5 setup,
 read-only review, and explicit worktree-only edit tests.
 [LoRA demonstration plan](LORA_DEMO_PLAN.md) describes the next small-model
-SFT experiment; it does not start training.
+SFT experiment; the working implementation and PAC results are recorded
+in the experiment README and PR history.
 
 ```bash
 pac-llm setup --components opencode        # preview
@@ -44,7 +49,7 @@ pac-llm config init --gpu 1 --coder-port 18100 --reasoner-port 18101 --web-port 
 pac-llm config show
 pac-llm setup                              # PREVIEW only
 pac-llm setup --components vllm,web,aider --yes
-pac-llm setup --components vllm --download-coder --yes   # optional, large weights
+pac-llm setup --components vllm --download-coder --yes   # optional, small 4B default
 ```
 
 Installation and model downloads never happen implicitly through `start` or `doctor`. Each user's passwords, environments, chats and model cache live under their own research root.
@@ -85,14 +90,19 @@ If you already have a `decs_local_llm` checkout, use `git pull --ff-only` rather
 pac-llm status                      # service PID and API readiness
 pac-llm doctor                      # paths + live GPU free VRAM
 pac-llm start web                   # CPU-only, localhost:8080
-pac-llm start coder --gpu 0         # Qwen3 Coder on GPU 0, localhost:8000
+pac-llm start coder --gpu 0         # 4B workshop coder on GPU 0, localhost:8000
 pac-llm logs coder --lines 30       # short log tail, safe with huge logs
 pac-llm aider                       # ask-only Aider, honors saved coder port; does not edit .gitignore
 pac-llm stop coder                  # only our managed process group
 pac-llm stop web
 ```
 
-The large Qwen model can take several minutes to load from NFS. `start` **returns immediately** with PID/log paths; use `status` and `logs`, and do not start it repeatedly. vLLM `--enable-auto-tool-choice --tool-call-parser qwen3_xml` is on for the default coder model, matching the working November setup. A custom model must opt in with `--tool-parser`.
+Model loading from NFS and first-time JIT compilation can be slow.
+`start` **returns immediately** with PID/log paths; use `status` and
+`logs`, and do not start repeatedly. The proposed 4B default uses
+`--enable-auto-tool-choice --tool-call-parser hermes`. The previous
+30B Qwen3-Coder requires `qwen3_xml`. Do not assume a different
+model works with the same parser; see [LAB_HANDOUT.md](LAB_HANDOUT.md).
 
 The separate SSH tunnel on the Windows laptop remains:
 
@@ -113,7 +123,7 @@ pac-llm start coder               # equivalent to --gpu 1
 pac-llm start coder --gpu 1 --model organization/model-name --served-name my-model
 
 # Two-GPU reasoning model; much larger VRAM requirement
-pac-llm start reasoner --gpus 0,1  # localhost:8001, no default tool parser
+pac-llm start reasoner --gpus 0,1  # advanced two-GPU profile, localhost:8001
 ```
 
 Available environment overrides:
@@ -132,7 +142,20 @@ Available environment overrides:
 | `PAC_LLM_REASONER_PORT` | `8001` | vLLM reasoning API port |
 | `PAC_LLM_WEB_PORT` | `8080` | Open WebUI port |
 
-The default coder is `Qwen/Qwen3-Coder-30B-A3B-Instruct`, BF16, 16k context, 0.72 GPU memory utilization. The default reasoner is `Qwen/Qwen3-Next-80B-A3B-Thinking`, BF16, tensor parallel 2, 16k context, 0.88 memory utilization. These are **starting configurations**, not guarantees that a GPU has enough free memory. Custom models may need different dtype, context, or tool parser; the launcher currently uses BF16.
+The proposed workshop coder is `Qwen/Qwen3-4B-Instruct-2507`, BF16,
+16k context, `hermes` parser, 0.16 GPU memory utilization.
+The earlier validated large coder remains available explicitly:
+
+```bash
+pac-llm start coder --gpu 2 \
+  --model Qwen/Qwen3-Coder-30B-A3B-Instruct \
+  --served-name local-qwen-coder \
+  --tool-parser qwen3_xml --memory-util 0.68 --max-model-len 16384
+```
+
+Do not start this large profile during a multi-user introductory workshop
+unless GPU capacity has been coordinated. The old parser is not appropriate
+for the new 4B model. The default reasoner is `Qwen/Qwen3-Next-80B-A3B-Thinking`, BF16, tensor parallel 2, 16k context, 0.88 memory utilization. These are **starting configurations**, not guarantees that a GPU has enough free memory. Custom models may need different dtype, context, or tool parser; the launcher currently uses BF16.
 
 ## Co-tenancy and safety
 
