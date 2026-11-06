@@ -44,6 +44,17 @@ def setup_steps(w, components, downloads):
             steps.append(("Install pinned Aider", [str(py), "-m", "pip", "install", f"aider-chat=={AIDER}"]))
         if not (w.base / "run_aider_local.sh").is_file():
             steps.append(("Write safe Aider wrapper", None))
+    if "opencode" in components:
+        node_env = w.root / "conda-envs/opencode-node"
+        if not executable(node_env / "bin/node") or not executable(node_env / "bin/npm"):
+            steps.append(("Install per-user Node.js 22 and npm",
+                          [conda, "create", "-p", str(node_env), "-c", "conda-forge",
+                           "nodejs=22", "-y"]))
+        if not executable(w.base / "opencode/npm/bin/opencode"):
+            steps.append(("Install OpenCode V2",
+                          [str(node_env / "bin/npm"), "install", "-g",
+                           "--prefix", str(w.base / "opencode/npm"),
+                           "@opencode/cli@2.2.5"]))
     hf = w.vllm_env / "bin/hf"
     for model in downloads:
         steps.append((f"Download model weights: {model}", [str(hf), "download", model]))
@@ -94,6 +105,8 @@ def install(w, components, downloads, accept, source_environment):
         raise RuntimeError("Conda not found on PATH; cannot create environments")
     w.prepare()
     env = source_environment(w)
+    node_env = w.root / "conda-envs/opencode-node"
+    env["PATH"] = str(node_env / "bin") + os.pathsep + env.get("PATH", "")
     env.update({
         "CONDA_PKGS_DIRS": str(w.base / "conda_pkgs"),
         "PIP_CACHE_DIR": str(w.base / "pip_cache"),
