@@ -69,6 +69,89 @@ If the repository already exists, do not clone over it. Instead inspect
 checkout to use. **For reproducing this workshop, pin the source commit.**
 The branch may receive small fixes; record the commit you actually ran.
 
+### Existing PAC account: rehearsal without reinstalling
+
+If this account already has a working `local_llm` installation, you can
+**skip the installer** and reproduce the *live* workshop from section 3.
+Do not clone over an existing `$ROOT/decs_local_llm` checkout, reinstall
+packages, or replace the existing `local_llm/bin/pac-llm` symlink.
+
+Use a separate **linked source worktree** containing the exact workshop branch:
+
+```bash
+export PAC_LLM_ROOT="/egr/research-pac/$USER"
+ROOT="$PAC_LLM_ROOT"
+BASE="$ROOT/local_llm"
+REHEARSAL="$BASE/lab-rehearsal/source"
+mkdir -p "$BASE/lab-rehearsal"
+
+git -C "$ROOT/decs_local_llm" fetch origin feature/pac-lab-autopilot-4b
+
+if [ -d "$REHEARSAL" ]; then
+  git -C "$REHEARSAL" status --short
+  # If the worktree has local changes, review them rather than discarding.
+  git -C "$REHEARSAL" switch --detach origin/feature/pac-lab-autopilot-4b
+else
+  git -C "$ROOT/decs_local_llm" worktree add --detach \
+    "$REHEARSAL" origin/feature/pac-lab-autopilot-4b
+fi
+
+export REPO="$REHEARSAL"
+export PATH="$REPO/bin:$BASE/bin:$PATH"
+
+git -C "$REPO" rev-parse HEAD
+python3 -m unittest discover -s "$REPO/tests" -v
+```
+
+**Do not start `lab_install.sh start`** in this existing-account path.
+Instead, prepare the workshop dataset once with the installed LoRA
+environment (CPU only), then run the offline verifier:
+
+```bash
+export HF_HOME="$BASE/hf_cache"
+export HF_HUB_CACHE="$BASE/hf_cache/hub"
+export HF_HUB_OFFLINE=1
+export HF_HUB_DISABLE_IMPLICIT_TOKEN=1
+unset HF_TOKEN HUGGING_FACE_HUB_TOKEN
+
+"$ROOT/conda-envs/lora-demo/bin/python" \
+  "$REPO/experiments/lora_demo/demo.py" prepare \
+  --run-dir "$BASE/lora-demo/runs/workshop-ack-v1"
+
+python3 "$REPO/scripts/lab_verify.py" --root "$ROOT" --repo "$REPO"
+```
+
+A `PASS` here means the existing environment has the expected tools,
+model caches and tokenizer; it **does not** validate the new-account
+installer. If verification fails, inspect the reported missing component
+rather than installing everything again.
+
+Then proceed from **section 3 (GPU/ports)** through **section 11**.
+For an existing account, use `pac-llm config show`; do not repeat
+`config init` if config exists. If `coder` is already running with
+Qwen3-4B, use `pac-llm status` and check `/v1/models` before deciding
+whether a restart is needed. If WebUI reports an **unmanaged port**,
+do not stop someone else's service or attempt to launch another WebUI
+on that port; investigate whether it is your previously launched UI,
+or select a free personal port.
+
+**Every new terminal in an existing-account rehearsal** should use this
+instead of the new-account shell-variable block below:
+
+```bash
+export ROOT="/egr/research-pac/$USER"
+export BASE="$ROOT/local_llm"
+export REPO="$BASE/lab-rehearsal/source"
+export PATH="$REPO/bin:$BASE/bin:$PATH"
+```
+
+This makes `pac-llm` resolve to the rehearsal source, without changing
+your original command symlink. The LoRA training/evaluation exercises
+still use a **fresh personal run directory** and should be verified
+independently rather than reusing an earlier successful receipt.
+
+---
+
 ## 2. Install everything in an automated, resumable run (no GPU jobs)
 
 The installer handles the following, in order:
