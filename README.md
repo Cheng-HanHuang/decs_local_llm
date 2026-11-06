@@ -4,6 +4,17 @@ A small, **per-user, localhost-only** launcher for existing vLLM, Open WebUI, an
 
 This is a per-user service manager with an **explicit, opt-in setup command**. Existing vLLM/Open WebUI service operation has been validated on PAC; the new installation path still needs a first-time lab-member test.
 
+## Tiny LoRA SFT experiment (GPU 2)
+
+See [experiments/lora_demo/README.md](experiments/lora_demo/README.md)
+for a small **Qwen3-0.6B + PEFT** fine-tuning demonstration. The experiment
+uses a frozen base, learns a rank-eight adapter with supervised cross-entropy,
+then compares base and adapter through vLLM on held-out prompts.
+
+This is a **separate opt-in experiment**, not a launcher feature and not a
+completed training run. No model weights, datasets, or secrets are tracked
+in Git. Do not change or reinstall the working vLLM environment.
+
 ## OpenCode local agent (V2)
 
 See [OPENCODE.md](OPENCODE.md) for a per-user OpenCode 2.2.5 setup,
