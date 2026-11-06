@@ -518,6 +518,9 @@ def main(argv=None):
     cs = config_sub.add_parser("set")
     cs.add_argument("key", choices=tuple(CONFIG_KEYS))
     cs.add_argument("value")
+    agent = sub.add_parser("opencode", help="Launch local OpenCode V2 agent (read-only by default)")
+    agent.add_argument("--mode", choices=("read", "edit"), default="read")
+    agent.add_argument("--preview", action="store_true", help="Print effective agent config without launching")
     setup = sub.add_parser("setup", help="Preview or explicitly install missing dependencies")
     setup.add_argument("--components", default="vllm,web,aider")
     setup.add_argument("--download-coder", action="store_true")
@@ -529,11 +532,14 @@ def main(argv=None):
         apply_config(w)
         if args.action == "config":
             cmd_config(w, args)
+        elif args.action == "opencode":
+            from pac_llm_opencode import launch
+            launch(w, args)
         elif args.action == "setup":
             from pac_llm_bootstrap import install
             components = {part.strip() for part in args.components.split(",") if part.strip()}
-            if not components or not components <= {"vllm", "web", "aider"}:
-                fail("--components must contain vllm,web,aider")
+            if not components or not components <= {"vllm", "web", "aider", "opencode"}:
+                fail("--components must contain vllm,web,aider,opencode")
             downloads = []
             if args.download_coder:
                 downloads.append(PROFILES["coder"]["model"])
