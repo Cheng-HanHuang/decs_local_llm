@@ -15,7 +15,8 @@ SFT experiment; it does not start training.
 pac-llm setup --components opencode        # preview
 pac-llm setup --components opencode --yes  # optional Node/OpenCode installation
 pac-llm opencode --preview                 # inspect model and permissions
-pac-llm opencode                           # read-only agent on local coder
+pac-llm opencode                           # read-only agent, default 8 steps
+pac-llm opencode --mode edit --steps 16    # approved edits in linked worktree only
 ```
 
 The agent uses the existing vLLM backend and does not allocate another GPU.
