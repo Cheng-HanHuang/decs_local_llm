@@ -37,6 +37,11 @@ class OpenCodeTests(unittest.TestCase):
     def test_read_mode_is_non_mutating(self):
         cfg = mod.make_config(18100, "local-qwen-coder", 8192, "read")
         self.assertEqual(cfg["model"], "pac/coder")
+        self.assertEqual(cfg["default_agent"], "pac-read")
+        self.assertEqual(cfg["agents"]["pac-read"]["steps"], 3)
+        self.assertFalse(cfg["compaction"]["auto"])
+        self.assertIn({"action": "tool.use", "resource": "shell:*", "effect": "deny"}, cfg["policies"])
+        self.assertIn({"action": "tool.use", "resource": "edit:*", "effect": "deny"}, cfg["policies"])
         self.assertEqual(cfg["providers"]["pac"]["models"]["coder"]["modelID"], "local-qwen-coder")
         self.assertEqual(cfg["providers"]["pac"]["settings"]["baseURL"], "http://127.0.0.1:18100/v1")
         rules = cfg["permissions"]
@@ -45,6 +50,10 @@ class OpenCodeTests(unittest.TestCase):
         self.assertIn({"action": "external_directory", "resource": "*", "effect": "deny"}, rules)
         self.assertIn({"action": "*", "resource": "*", "effect": "deny"}, rules)
         self.assertNotIn({"action": "shell", "resource": "*", "effect": "ask"}, rules)
+        edit = mod.make_config(18100, "local-qwen-coder", 8192, "edit")
+        self.assertEqual(edit["default_agent"], "pac-edit")
+        self.assertEqual(edit["agents"]["pac-edit"]["steps"], 5)
+        self.assertNotIn({"action": "tool.use", "resource": "edit:*", "effect": "deny"}, edit["policies"])
 
     def test_opencode_install_preview(self):
         r = self.cmd("setup", "--components", "opencode")
