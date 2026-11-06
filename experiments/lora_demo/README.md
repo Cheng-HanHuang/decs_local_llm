@@ -175,9 +175,16 @@ consistent. We intentionally use port 18002 to avoid the coder's port 8000.
 ```bash
 ROOT=/egr/research-pac/$USER
 BASE="$ROOT/local_llm"
-RUN="$BASE/lora-demo/runs/ack-v1"
+RUN="$BASE/lora-demo/runs/ack-v2"
 source "$BASE/env_local_agent.sh"
+# FlashInfer JIT invokes "ninja" by name during vLLM startup.
+# Giving vLLM an absolute path alone does not make ninja discoverable.
 export PATH="$ROOT/conda-envs/local-agent/bin:$PATH"
+if ! command -v ninja >/dev/null 2>&1; then
+  echo "ERROR: ninja not on PATH. Check $ROOT/conda-envs/local-agent/bin/ninja" >&2
+  exit 1
+fi
+ninja --version
 export CUDA_VISIBLE_DEVICES=2
 export HF_HUB_OFFLINE=1
 
@@ -186,10 +193,19 @@ export HF_HUB_OFFLINE=1
   --host 127.0.0.1 --port 18002 \
   --served-model-name qwen3-small-base \
   --dtype bfloat16 --max-model-len 2048 \
-  --gpu-memory-utilization 0.30 --max-num-seqs 2 \
+  --gpu-memory-utilization 0.15 --max-num-seqs 2 \
   --enable-lora --max-lora-rank 8 \
   --lora-modules "toy-lora=$RUN/adapter"
 ```
+
+If startup fails in FlashInfer's warmup with
+`FileNotFoundError: [Errno 2] No such file or directory: 'ninja'`,
+verify `$ROOT/conda-envs/local-agent/bin/ninja` exists and that the
+environment's `bin` directory is on `PATH` before launching. If the
+executable truly is absent, install `ninja` in the existing vLLM
+environment using `"$ROOT/conda-envs/local-agent/bin/python" -m pip install ninja`.
+The model may have already compiled and captured CUDA graphs before this
+error; it is not evidence of broken adapter weights.
 
 This vLLM launch is **foreground**. If it fails, use its terminal log to
 investigate. Stop it with Ctrl+C. Do not set
@@ -202,7 +218,7 @@ After vLLM reports startup complete, in a *second* PAC terminal:
 curl -sS http://127.0.0.1:18002/v1/models | python3 -m json.tool
 
 ROOT=/egr/research-pac/$USER
-RUN="$ROOT/local_llm/lora-demo/runs/ack-v1"
+RUN="$ROOT/local_llm/lora-demo/runs/ack-v2"
 ENV="$ROOT/conda-envs/lora-demo"
 
 "$ENV/bin/python" "$ROOT/local_llm/lora-demo/source/experiments/lora_demo/demo.py" \
